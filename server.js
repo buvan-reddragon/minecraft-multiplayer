@@ -7,39 +7,35 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 
-// Enable Socket.IO with permissive CORS for production/Render
 const io = new Server(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: '*',
+    methods: ['GET', 'POST']
   }
 });
 
-// Serve static files from the public folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Store connected players
 const players = {};
 
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
-  // Initialize new player
+  // Create default player state
   players[socket.id] = {
     id: socket.id,
+    name: `Knight_${socket.id.substring(0, 4)}`,
     x: 0,
     y: 0,
     z: 0,
     rotation: 0
   };
 
-  // Broadcast current players to the new player
+  // Send existing players to new connection
   socket.emit('currentPlayers', players);
-
-  // Broadcast new player to all other players
   socket.broadcast.emit('newPlayer', players[socket.id]);
 
-  // Handle player movement
+  // Handle position updates
   socket.on('playerMovement', (movementData) => {
     if (players[socket.id]) {
       players[socket.id].x = movementData.x;
@@ -53,12 +49,11 @@ io.on('connection', (socket) => {
   // Handle live chat
   socket.on('chatMessage', (data) => {
     io.emit('receiveMessage', {
-      sender: `Knight_${socket.id.substring(0, 4)}`,
+      sender: players[socket.id]?.name || 'Knight',
       text: data.text
     });
   });
 
-  // Handle disconnect
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
     delete players[socket.id];
@@ -66,8 +61,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Render dynamic port binding
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Arcadia of Knight server running on port ${PORT}`);
+  console.log(`Arcadia of knight server running on port ${PORT}`);
 });
