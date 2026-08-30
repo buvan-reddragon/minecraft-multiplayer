@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Minecraft Multiplayer Demo</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; }
+    #canvas-container { width: 100vw; height: 100vh; }
+    
+    #ui-overlay {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 12px 18px;
+      color: white;
+      border-radius: 8px;
+    }
+
+    #chat-container {
+      position: absolute;
+      bottom: 15px;
+      left: 15px;
+      z-index: 10;
+      width: 320px;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 12px;
+      border-radius: 8px;
+      color: white;
+    }
+
+    #chat-messages {
+      height: 120px;
+      overflow-y: auto;
+      border: 1px solid #444;
+      margin-bottom: 8px;
+      padding: 6px;
+      font-size: 14px;
+    }
+
+    #chat-input { width: 70%; padding: 4px; }
+    #chat-send { width: 25%; padding: 4px; }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <div id="ui-overlay">
+    <p style="margin: 0 0 8px 0;"><strong>Click screen to control camera</strong> (WASD to move)</p>
+    <label for="room-select">Room: </label>
+    <select id="room-select">
+      <option value="room-1">Room 1</option>
+      <option value="room-2">Room 2</option>
+      <option value="room-3">Room 3</option>
+      <option value="room-4">Room 4</option>
+    </select>
+  </div>
+
+  <div id="chat-container">
+    <div id="chat-messages"></div>
+    <input type="text" id="chat-input" placeholder="Type message..." />
+    <button id="chat-send">Send</button>
+  </div>
+
+  <div id="canvas-container"></div>
+  <script src="client.js"></script>
+</body>
+</html>
