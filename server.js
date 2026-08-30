@@ -1,85 +1,64 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: { origin: "*" }
+});
 
-// Serve files from the /public folder
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Track player states across 4 rooms
 const players = {};
 
 io.on('connection', (socket) => {
-  console.log(`Player connected: ${socket.id}`);
+  console.log('Player connected:', socket.id);
 
-  // Set default room on join
-  let currentRoom = 'room-1';
-  socket.join(currentRoom);
-
+  // Initialize new player in global room
   players[socket.id] = {
+    id: socket.id,
     x: 0,
-    y: 2,
-    z: 0,
-    room: currentRoom,
-    color: Math.floor(Math.random() * 16777215)
+    y: 1.6,
+    z: 0
   };
 
-  // Send initial room players to new player
-  socket.emit('currentPlayers', getPlayersInRoom(currentRoom));
-  
-  // Notify others in room 1 about new player
-  socket.to(currentRoom).emit('newPlayer', { id: socket.id, player: players[socket.id] });
+  // Send current players list to new connection
+  socket.emit('currentPlayers', players);
 
-  // Handle Switching Rooms
-  socket.on('switchRoom', (newRoom) => {
-    socket.leave(currentRoom);
-    socket.to(currentRoom).emit('playerDisconnected', socket.id);
+  // Broadcast new player to all other connected players
+  socket.broadcast.emit('newPlayer', players[socket.id]);
 
-    currentRoom = newRoom;
-    socket.join(currentRoom);
-    players[socket.id].room = currentRoom;
-
-    socket.emit('currentPlayers', getPlayersInRoom(currentRoom));
-    socket.to(currentRoom).emit('newPlayer', { id: socket.id, player: players[socket.id] });
-  });
-
-  // Sync Player Movement
-  socket.on('playerMovement', (pos) => {
+  // Movement handler
+  socket.on('playerMovement', (movementData) => {
     if (players[socket.id]) {
-      players[socket.id].x = pos.x;
-      players[socket.id].y = pos.y;
-      players[socket.id].z = pos.z;
-      socket.to(currentRoom).emit('playerMoved', { id: socket.id, position: pos });
+      players[socket.id].x = movementData.x;
+      players[socket.id].y = movementData.y;
+      players[socket.id].z = movementData.z;
+      socket.broadcast.emit('playerMoved', players[socket.id]);
     }
   });
 
-  // Room Isolated Chat
-  socket.on('roomChat', (text) => {
-    io.to(currentRoom).emit('chatMessage', { id: socket.id.substring(0, 4), text: text });
+  // Global Chat Handler
+  socket.on('chatMessage', (msg) => {
+    io.emit('chatMessage', { id: socket.id, text: msg });
   });
 
-  // Handle Disconnect
+  // Weapon Firing Handler
+  socket.on('playerShot', (shotData) => {
+    socket.broadcast.emit('playerShot', { id: socket.id, ...shotData });
+  });
+
+  // Disconnect Handler
   socket.on('disconnect', () => {
-    console.log(`Player disconnected: ${socket.id}`);
-    socket.to(currentRoom).emit('playerDisconnected', socket.id);
+    console.log('Player disconnected:', socket.id);
     delete players[socket.id];
+    io.emit('playerDisconnected', socket.id);
   });
 });
 
-function getPlayersInRoom(roomName) {
-  const roomPlayers = {};
-  for (const id in players) {
-    if (players[id].room === roomName) {
-      roomPlayers[id] = players[id];
-    }
-  }
-  return roomPlayers;
-}
-
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server is live at http://localhost:${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
