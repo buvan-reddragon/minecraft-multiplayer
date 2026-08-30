@@ -10,10 +10,12 @@ const io = new Server(server, { cors: { origin: "*" } });
 app.use(express.static(path.join(__dirname, 'public')));
 
 const players = {};
+const carsState = {
+  0: { driver: null },
+  1: { driver: null }
+};
 
 io.on('connection', (socket) => {
-  console.log('Player connected:', socket.id);
-
   players[socket.id] = {
     id: socket.id,
     name: 'Player',
@@ -23,7 +25,9 @@ io.on('connection', (socket) => {
     rotationY: 0,
     inCar: false,
     carId: null,
-    isMoving: false
+    isDriver: false,
+    isMoving: false,
+    emote: null
   };
 
   socket.on('joinGame', (name) => {
@@ -34,10 +38,33 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('newPlayer', players[socket.id]);
   });
 
+  socket.on('requestCarEntry', (carId) => {
+    if (carsState[carId]) {
+      const isDriver = (carsState[carId].driver === null);
+      if (isDriver) {
+        carsState[carId].driver = socket.id;
+      }
+      socket.emit('carEntryResult', { carId, isDriver, success: true });
+    }
+  });
+
+  socket.on('leaveCar', (carId) => {
+    if (carsState[carId] && carsState[carId].driver === socket.id) {
+      carsState[carId].driver = null;
+    }
+  });
+
   socket.on('playerMovement', (data) => {
     if (players[socket.id]) {
       Object.assign(players[socket.id], data);
       socket.broadcast.emit('playerMoved', players[socket.id]);
+    }
+  });
+
+  socket.on('playEmote', (emoteName) => {
+    if (players[socket.id]) {
+      players[socket.id].emote = emoteName;
+      io.emit('playerEmote', { id: socket.id, emote: emoteName });
     }
   });
 
@@ -51,6 +78,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    Object.keys(carsState).forEach(cId => {
+      if (carsState[cId].driver === socket.id) carsState[cId].driver = null;
+    });
     delete players[socket.id];
     io.emit('playerDisconnected', socket.id);
   });
