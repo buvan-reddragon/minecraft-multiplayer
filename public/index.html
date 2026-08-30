@@ -2,40 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>3D City Sandbox Multiplayer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>City Sandbox Multiplayer</title>
   <style>
-    * { box-sizing: border-box; }
-    body, html {
-      margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden;
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
       font-family: Arial, sans-serif; user-select: none; -webkit-user-select: none;
-      background: #000;
+      background: #000; position: fixed;
     }
-
-    /* Force Landscape Warning for Mobile Portrait */
-    @media screen and (orientation: portrait) {
-      #landscape-notice {
-        display: flex !important;
-      }
+    #canvas-container {
+      position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1;
     }
-    #landscape-notice {
-      position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-      background: rgba(0,0,0,0.9); color: #fff; z-index: 100;
-      display: none; flex-direction: column; justify-content: center; align-items: center;
-      text-align: center; font-size: 20px; font-weight: bold;
-    }
-
-    #canvas-container { width: 100vw; height: 100vh; }
-
-    /* Crosshair */
     #crosshair {
-      position: absolute; top: 50%; left: 50%; width: 12px; height: 12px;
-      margin-top: -6px; margin-left: -6px; border-radius: 50%;
-      background: rgba(255, 255, 255, 0.8); border: 2px solid black;
+      position: absolute; top: 50%; left: 50%; width: 10px; height: 10px;
+      margin-top: -5px; margin-left: -5px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.9); border: 2px solid black;
       pointer-events: none; z-index: 10;
     }
 
-    /* Room Select Overlay */
+    /* Server Selection Overlay */
     #room-overlay {
       position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
       background: rgba(0,0,0,0.85); z-index: 50; display: flex;
@@ -49,50 +35,50 @@
     /* Top Left UI */
     #ui-container {
       position: absolute; top: 10px; left: 10px; z-index: 10;
-      color: white; text-shadow: 2px 2px 4px black; font-size: 14px;
+      color: white; text-shadow: 2px 2px 4px black; font-size: 14px; pointer-events: none;
     }
     #health-bar-container {
-      width: 180px; height: 16px; background: rgba(0,0,0,0.6);
+      width: 160px; height: 14px; background: rgba(0,0,0,0.6);
       border: 2px solid white; border-radius: 4px; margin-top: 4px; overflow: hidden;
     }
     #health-bar { width: 100%; height: 100%; background: #28a745; }
 
-    /* Chat System */
+    /* Compact Mobile Chat Box */
     #chat-container {
-      position: absolute; bottom: 20px; left: 20px; z-index: 20;
-      width: 280px; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px;
+      position: absolute; top: 10px; right: 10px; z-index: 20;
+      width: 240px; background: rgba(0,0,0,0.5); padding: 8px; border-radius: 8px;
     }
     #chat-messages {
-      height: 100px; overflow-y: auto; color: white; font-size: 12px;
-      margin-bottom: 5px; display: flex; flex-direction: column; gap: 4px;
+      height: 70px; overflow-y: auto; color: white; font-size: 11px;
+      margin-bottom: 5px; display: flex; flex-direction: column; gap: 2px;
     }
-    #chat-input-container { display: flex; gap: 5px; }
-    #chat-input { flex: 1; padding: 5px; border-radius: 4px; border: none; outline: none; }
-    #chat-send { padding: 5px 10px; background: #007bff; color: white; border: none; border-radius: 4px; }
+    #chat-input-container { display: flex; gap: 4px; }
+    #chat-input { flex: 1; padding: 4px; border-radius: 4px; border: none; outline: none; font-size: 12px; }
+    #chat-send { padding: 4px 8px; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 12px; }
 
-    /* Mobile Virtual Joystick & Buttons */
+    /* Mobile Controls */
     #joystick-zone {
-      position: absolute; bottom: 20px; left: 20px; width: 120px; height: 120px;
-      background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.4);
+      position: absolute; bottom: 20px; left: 20px; width: 110px; height: 110px;
+      background: rgba(255,255,255,0.25); border: 2px solid rgba(255,255,255,0.5);
       border-radius: 50%; z-index: 30; display: none; touch-action: none;
     }
     #joystick-knob {
-      position: absolute; top: 35px; left: 35px; width: 50px; height: 50px;
-      background: rgba(255,255,255,0.7); border-radius: 50%; pointer-events: none;
+      position: absolute; top: 30px; left: 30px; width: 50px; height: 50px;
+      background: rgba(255,255,255,0.8); border-radius: 50%; pointer-events: none;
     }
     .mobile-btn {
       position: absolute; background: rgba(255,255,255,0.35); border: 2px solid white;
       border-radius: 50%; color: white; display: none; justify-content: center;
       align-items: center; font-weight: bold; z-index: 30; touch-action: none;
     }
-    #btn-shoot { bottom: 20px; right: 20px; width: 70px; height: 70px; background: rgba(220,53,69,0.7); }
-    #btn-jump { bottom: 100px; right: 20px; width: 60px; height: 60px; }
-    #btn-action { bottom: 20px; right: 100px; width: 60px; height: 60px; background: rgba(255,193,7,0.7); }
+    #btn-shoot { bottom: 20px; right: 20px; width: 65px; height: 65px; background: rgba(220,53,69,0.7); }
+    #btn-jump { bottom: 95px; right: 20px; width: 55px; height: 55px; }
+    #btn-action { bottom: 20px; right: 95px; width: 55px; height: 55px; background: rgba(255,193,7,0.7); }
 
-    /* Respawn Screen */
+    /* Respawn Overlay */
     #respawn-screen {
       position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-      background: rgba(180, 0, 0, 0.75); display: none; flex-direction: column;
+      background: rgba(180, 0, 0, 0.8); display: none; flex-direction: column;
       justify-content: center; align-items: center; color: white; z-index: 40;
     }
     #respawn-btn {
@@ -104,12 +90,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-  <!-- Landscape Notice -->
-  <div id="landscape-notice">🔄 Please rotate your device into Landscape mode!</div>
-
-  <!-- Room Selection Modal -->
+  <!-- Server Join Modal -->
   <div id="room-overlay">
-    <h2>Choose a Server Room</h2>
+    <h2>Choose Server Room</h2>
     <div>
       <button class="room-btn" onclick="joinRoom('Room 1')">Room 1</button>
       <button class="room-btn" onclick="joinRoom('Room 2')">Room 2</button>
@@ -121,29 +104,29 @@
   <div id="canvas-container"></div>
   <div id="crosshair"></div>
 
-  <!-- UI & Health -->
+  <!-- HUD -->
   <div id="ui-container">
     <div><strong>Room:</strong> <span id="current-room">None</span></div>
     <div><strong>HP:</strong> <span id="hp-text">100</span></div>
     <div id="health-bar-container"><div id="health-bar"></div></div>
   </div>
 
-  <!-- Chat Box -->
+  <!-- Chat -->
   <div id="chat-container">
     <div id="chat-messages"></div>
     <div id="chat-input-container">
-      <input type="text" id="chat-input" placeholder="Type chat message..." />
+      <input type="text" id="chat-input" placeholder="Chat..." />
       <button id="chat-send">Send</button>
     </div>
   </div>
 
-  <!-- Respawn Screen -->
+  <!-- Respawn -->
   <div id="respawn-screen">
     <h1>YOU DIED</h1>
     <button id="respawn-btn">RESPAWN</button>
   </div>
 
-  <!-- Mobile Touch Controls -->
+  <!-- Touch UI -->
   <div id="joystick-zone"><div id="joystick-knob"></div></div>
   <div id="btn-shoot" class="mobile-btn">FIRE</div>
   <div id="btn-jump" class="mobile-btn">JUMP</div>
