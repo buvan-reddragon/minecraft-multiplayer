@@ -16,53 +16,60 @@ app.use(express.static(path.join(__dirname, 'public')));
 const players = {};
 
 io.on('connection', (socket) => {
-  console.log(`Player connected: ${socket.id}`);
-
-  // 1. Join game with chosen username
   socket.on('joinGame', (username) => {
     players[socket.id] = {
       id: socket.id,
       name: username || `Knight_${socket.id.substring(0, 4)}`,
-      x: (Math.random() - 0.5) * 20,
+      x: (Math.random() - 0.5) * 6,
       y: 0,
-      z: (Math.random() - 0.5) * 20,
+      z: (Math.random() - 0.5) * 6,
       rotation: 0,
-      isMoving: false
+      isMoving: false,
+      health: 5,
+      weapon: 'sword'
     };
 
-    // Send existing players to caller
     socket.emit('currentPlayers', players);
-    // Broadcast new player to others
     socket.broadcast.emit('newPlayer', players[socket.id]);
   });
 
-  // 2. Relay player position and movement
-  socket.on('playerMovement', (movementData) => {
+  socket.on('playerMovement', (data) => {
     if (players[socket.id]) {
-      players[socket.id].x = movementData.x;
-      players[socket.id].y = movementData.y;
-      players[socket.id].z = movementData.z;
-      players[socket.id].rotation = movementData.rotation;
-      players[socket.id].isMoving = movementData.isMoving;
+      Object.assign(players[socket.id], data);
       socket.broadcast.emit('playerMoved', players[socket.id]);
     }
   });
 
-  // 3. Relay live chat
+  socket.on('playerAttack', (attackData) => {
+    socket.broadcast.emit('remoteAttack', { id: socket.id, ...attackData });
+  });
+
+  socket.on('playerHit', (targetId) => {
+    if (players[targetId]) {
+      players[targetId].health -= 1;
+      if (players[targetId].health <= 0) {
+        // Player dies -> trigger respawn
+        players[targetId].health = 5;
+        players[targetId].x = (Math.random() - 0.5) * 6;
+        players[targetId].y = 0;
+        players[targetId].z = (Math.random() - 0.5) * 6;
+        io.emit('playerRespawned', players[targetId]);
+      } else {
+        io.emit('healthUpdate', { id: targetId, health: players[targetId].health });
+      }
+    }
+  });
+
   socket.on('chatMessage', (data) => {
     const senderName = players[socket.id] ? players[socket.id].name : 'Knight';
     io.emit('receiveMessage', { sender: senderName, text: data.text });
   });
 
-  // 4. Handle player exit
   socket.on('disconnect', () => {
-    console.log(`Player disconnected: ${socket.id}`);
     delete players[socket.id];
     io.emit('playerDisconnected', socket.id);
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Arcadia of knight server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server listening on port ${PORT}`));

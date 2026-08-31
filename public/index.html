@@ -11,8 +11,7 @@
       overflow: hidden; background-color: #130a24;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
-    
-    /* Username Entry Portal */
+
     #name-portal {
       position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
       background: rgba(10, 5, 20, 0.92); z-index: 200; display: flex;
@@ -29,26 +28,65 @@
     }
     #name-portal button:hover { background: #d97706; }
 
-    /* In-Game Chat UI */
+    /* Health & Weapon HUD */
+    #hud {
+      position: absolute; top: 20px; left: 20px; z-index: 100;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    #health-bar-container {
+      width: 220px; height: 22px; background: rgba(15, 23, 42, 0.8);
+      border: 2px solid #f59e0b; border-radius: 6px; overflow: hidden; position: relative;
+    }
+    #health-bar-fill {
+      width: 100%; height: 100%; background: #ef4444; transition: width 0.2s;
+    }
+    #health-text {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 12px; font-weight: bold; text-shadow: 1px 1px 2px black;
+    }
+    #weapon-indicator {
+      color: #f59e0b; font-size: 14px; font-weight: bold;
+      background: rgba(0, 0, 0, 0.6); padding: 6px 12px; border-radius: 6px;
+      border: 1px solid rgba(245, 158, 11, 0.3); width: max-content;
+    }
+
+    /* Controls Instruction */
+    #instructions {
+      position: absolute; top: 20px; right: 20px; color: #f59e0b;
+      font-size: 13px; background: rgba(0, 0, 0, 0.65); padding: 10px 14px;
+      border-radius: 6px; pointer-events: none; border: 1px solid rgba(245, 158, 11, 0.3);
+      line-height: 1.6;
+    }
+
+    /* Chat Container with Minimise Button */
     #chat-container {
       position: absolute; bottom: 20px; left: 20px; width: 320px;
       background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(245, 158, 11, 0.6);
-      border-radius: 8px; padding: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-      z-index: 100; backdrop-filter: blur(4px);
+      border-radius: 8px; padding: 10px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+      z-index: 100; backdrop-filter: blur(4px); transition: height 0.3s;
+    }
+    #chat-header {
+      display: flex; justify-content: space-between; align-items: center;
+      color: #f59e0b; font-size: 13px; font-weight: bold; margin-bottom: 6px; cursor: pointer;
     }
     #chat-messages {
-      height: 140px; overflow-y: auto; color: #e2e8f0; font-size: 14px;
-      margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px;
+      height: 130px; overflow-y: auto; color: #e2e8f0; font-size: 13px;
+      margin-bottom: 8px; display: flex; flex-direction: column; gap: 4px;
     }
     #chat-input {
       width: 100%; background: rgba(0, 0, 0, 0.6); border: 1px solid #7c3aed;
-      color: #fff; padding: 8px 12px; border-radius: 4px; outline: none; font-size: 14px;
+      color: #fff; padding: 6px 10px; border-radius: 4px; outline: none; font-size: 13px;
+    }
+    .chat-minimized #chat-messages, .chat-minimized #chat-input {
+      display: none !important;
     }
 
-    #instructions {
-      position: absolute; top: 20px; left: 20px; color: #f59e0b;
-      font-size: 14px; background: rgba(0, 0, 0, 0.6); padding: 8px 14px;
-      border-radius: 6px; pointer-events: none; border: 1px solid rgba(245, 158, 11, 0.3);
+    /* Crosshair for Bow Aiming */
+    #crosshair {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 10px; height: 10px; border: 2px solid rgba(255, 255, 255, 0.6);
+      border-radius: 50%; pointer-events: none; z-index: 90; display: none;
     }
   </style>
 </head>
@@ -61,16 +99,36 @@
     <button id="join-btn">ENTER REALM</button>
   </div>
 
+  <div id="hud">
+    <div id="health-bar-container">
+      <div id="health-bar-fill"></div>
+      <div id="health-text">HP: 5 / 5</div>
+    </div>
+    <div id="weapon-indicator">Weapon: SWORD (Press E to Swap)</div>
+  </div>
+
   <div id="instructions">
-    ⚔️ <b>Arcadia of knight</b> | Move: <b>W A S D</b> / Arrows | Chat/Music: <b>Enter</b>
+    ⚔️ <b>Controls:</b><br>
+    • Move: <b>W A S D</b><br>
+    • Rotate View: <b>Mouse Move</b> (Click screen to lock)<br>
+    • Jump: <b>Space</b><br>
+    • Equip Weapon: <b>E</b> (Sword / Bow)<br>
+    • Attack / Fight: <b>F</b><br>
+    • Chat: <b>Enter</b>
   </div>
 
   <div id="chat-container">
+    <div id="chat-header">
+      <span>REALM CHAT</span>
+      <button id="chat-toggle-btn" style="background:none; border:none; color:#f59e0b; cursor:pointer; font-weight:bold;">_</button>
+    </div>
     <div id="chat-messages">
       <div style="color: #94a3b8; font-style: italic;">Welcome to Arcadia of knight!</div>
     </div>
     <input type="text" id="chat-input" placeholder="Press Enter to chat..." autocomplete="off" />
   </div>
+
+  <div id="crosshair"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
