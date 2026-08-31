@@ -4,7 +4,7 @@ const socket = io();
 // --- 1. Basic Three.js Setup ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x130a24);
-scene.fog = new THREE.FogExp2(0x231433, 0.0075);
+scene.fog = new THREE.FogExp2(0x231433, 0.005);
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -19,20 +19,146 @@ const ambientLight = new THREE.AmbientLight(0x6b4c7a, 0.85);
 scene.add(ambientLight);
 
 const sunLight = new THREE.DirectionalLight(0xff9933, 2.2);
-sunLight.position.set(140, 50, -260);
+sunLight.position.set(140, 150, -260);
 sunLight.castShadow = true;
 scene.add(sunLight);
 
-// Grass Field
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(500, 500),
-  new THREE.MeshStandardMaterial({ color: 0x1e3e18, roughness: 0.9 })
-);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
+// --- 2. Custom Island Map & Surrounding Ocean Setup ---
+// Math shape function defining the custom island boundary from the provided map image
+function getIslandRadius(angle) {
+  const baseR = 140;
+  const distortion = Math.sin(angle * 2) * 20 + Math.cos(angle * 3) * 15 - Math.sin(angle * 5) * 10;
+  return baseR + distortion;
+}
 
-// --- 2. Stars & Ringed Orbital Planet ---
+function isInsideIsland(x, z) {
+  const angle = Math.atan2(z, x);
+  const dist = Math.sqrt(x * x + z * z);
+  return dist <= getIslandRadius(angle);
+}
+
+// Ocean Water Geometry
+const seaGeo = new THREE.PlaneGeometry(800, 800);
+const seaMat = new THREE.MeshStandardMaterial({
+  color: 0x0284c7,
+  roughness: 0.1,
+  metalness: 0.8,
+  transparent: true,
+  opacity: 0.85
+});
+const sea = new THREE.Mesh(seaGeo, seaMat);
+sea.rotation.x = -Math.PI / 2;
+sea.position.y = -0.5;
+scene.add(sea);
+
+// Custom Shaped Island Land Mesh
+const islandGeo = new THREE.PlaneGeometry(350, 350, 128, 128);
+islandGeo.rotateX(-Math.PI / 2);
+const posAttr = islandGeo.attributes.position;
+
+for (let i = 0; i < posAttr.count; i++) {
+  const x = posAttr.getX(i);
+  const z = posAttr.getZ(i);
+  const angle = Math.atan2(z, x);
+  const r = getIslandRadius(angle);
+  const dist = Math.sqrt(x * x + z * z);
+
+  // Shoreline and inland lake formation
+  const lakeDist = Math.sqrt(Math.pow(x - 30, 2) + Math.pow(z - (-20), 2));
+
+  if (lakeDist < 12) {
+    posAttr.setY(i, -0.8); // Inland lake pit
+  } else if (dist > r) {
+    posAttr.setY(i, -3.0); // Ocean floor
+  } else if (dist > r - 12) {
+    const t = (r - dist) / 12;
+    posAttr.setY(i, (1 - t) * -2.0); // Beach slope
+  } else {
+    posAttr.setY(i, 0); // Flat land
+  }
+}
+islandGeo.computeVertexNormals();
+
+const landMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.85 });
+const island = new THREE.Mesh(islandGeo, landMat);
+island.receiveShadow = true;
+scene.add(island);
+
+// Sand Shore Border Ring
+const sandGeo = new THREE.RingGeometry(110, 160, 64);
+sandGeo.rotateX(-Math.PI / 2);
+const sandMat = new THREE.MeshBasicMaterial({ color: 0xeab308, side: THREE.DoubleSide });
+const sandRing = new THREE.Mesh(sandGeo, sandMat);
+sandRing.position.y = -0.1;
+scene.add(sandRing);
+
+// --- 3. Mini-map Radar Navigation System ---
+const miniMapContainer = document.createElement('div');
+miniMapContainer.id = 'minimap-container';
+miniMapContainer.style.cssText = `
+  position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px;
+  border-radius: 50%; border: 3px solid #f59e0b; background: rgba(2, 132, 199, 0.8);
+  overflow: hidden; box-shadow: 0 0 15px rgba(0,0,0,0.6); z-index: 100;
+`;
+document.body.appendChild(miniMapContainer);
+
+const miniCanvas = document.createElement('canvas');
+miniCanvas.width = 150;
+miniCanvas.height = 150;
+miniMapContainer.appendChild(miniCanvas);
+const miniCtx = miniCanvas.getContext('2d');
+
+function renderMiniMap() {
+  if (!localPlayer) return;
+  miniCtx.clearRect(0, 0, 150, 150);
+
+  const cx = 75;
+  const cy = 75;
+  const mapScale = 0.45;
+
+  // Render Green Island Contour
+  miniCtx.fillStyle = '#22c55e';
+  miniCtx.beginPath();
+  for (let a = 0; a <= Math.PI * 2; a += 0.1) {
+    const r = getIslandRadius(a) * mapScale;
+    const mapX = cx + (r * Math.cos(a) - localPlayer.position.x * mapScale);
+    const mapY = cy + (r * Math.sin(a) - localPlayer.position.z * mapScale);
+    if (a === 0) miniCtx.moveTo(mapX, mapY);
+    else miniCtx.lineTo(mapX, mapY);
+  }
+  miniCtx.closePath();
+  miniCtx.fill();
+
+  // Render Central Spawn Portal Icon
+  const portalMapX = cx + (0 - localPlayer.position.x) * mapScale;
+  const portalMapY = cy + (0 - localPlayer.position.z) * mapScale;
+  miniCtx.fillStyle = '#06b6d4';
+  miniCtx.beginPath();
+  miniCtx.arc(portalMapX, portalMapY, 4, 0, Math.PI * 2);
+  miniCtx.fill();
+
+  // Render Remote Multiplayer Players (Red Dots)
+  Object.keys(remotePlayers).forEach((id) => {
+    const rp = remotePlayers[id];
+    const rx = cx + (rp.position.x - localPlayer.position.x) * mapScale;
+    const ry = cy + (rp.position.z - localPlayer.position.z) * mapScale;
+    miniCtx.fillStyle = '#ef4444';
+    miniCtx.beginPath();
+    miniCtx.arc(rx, ry, 3, 0, Math.PI * 2);
+    miniCtx.fill();
+  });
+
+  // Render Local Player Indicator (Yellow Arrow / Dot)
+  miniCtx.fillStyle = '#f59e0b';
+  miniCtx.beginPath();
+  miniCtx.arc(cx, cy, 5, 0, Math.PI * 2);
+  miniCtx.fill();
+  miniCtx.strokeStyle = '#ffffff';
+  miniCtx.lineWidth = 1.5;
+  miniCtx.stroke();
+}
+
+// --- 4. Sky Stars & Ringed Orbital Planet ---
 const starGeo = new THREE.BufferGeometry();
 const starCount = 800;
 const starPos = new Float32Array(starCount * 3);
@@ -44,7 +170,6 @@ for (let i = 0; i < starCount * 3; i += 3) {
 starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
 scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.8, transparent: true, opacity: 0.85 })));
 
-// Orbital Planet with Ring
 const planetGroup = new THREE.Group();
 const planetMesh = new THREE.Mesh(
   new THREE.SphereGeometry(25, 32, 32),
@@ -61,7 +186,7 @@ planetGroup.add(ringMesh);
 planetGroup.position.set(-180, 110, -260);
 scene.add(planetGroup);
 
-// --- 3. Cherry Blossom Forest & Wind Petals ---
+// --- 5. Cherry Blossom Forest & Wind Petals ---
 function createCherryTree() {
   const group = new THREE.Group();
   const trunk = new THREE.Mesh(
@@ -87,10 +212,10 @@ function createCherryTree() {
   return group;
 }
 
-for (let i = 0; i < 80; i++) {
+for (let i = 0; i < 70; i++) {
   const tree = createCherryTree();
-  const rad = 15 + Math.random() * 180;
   const ang = Math.random() * Math.PI * 2;
+  const rad = 15 + Math.random() * (getIslandRadius(ang) - 25);
   tree.position.set(Math.cos(ang) * rad, 0, Math.sin(ang) * rad);
   scene.add(tree);
 }
@@ -110,7 +235,7 @@ petalGeo.setAttribute('position', new THREE.BufferAttribute(petalPos, 3));
 const petalParticles = new THREE.Points(petalGeo, new THREE.PointsMaterial({ color: 0xffb7c5, size: 0.28, transparent: true, opacity: 0.85 }));
 scene.add(petalParticles);
 
-// --- 4. Spawn Portal Hub (Center World) ---
+// --- 6. Spawn Portal Hub (Center World) ---
 const portalGroup = new THREE.Group();
 const portalRing = new THREE.Mesh(
   new THREE.TorusGeometry(3.5, 0.25, 16, 100),
@@ -128,7 +253,7 @@ portalPillar.position.y = 0.05;
 portalGroup.add(portalPillar);
 scene.add(portalGroup);
 
-// --- 5. Village House Setup ---
+// --- 7. Village House Setup ---
 function createHouse() {
   const houseGroup = new THREE.Group();
   const walls = new THREE.Mesh(
@@ -164,7 +289,7 @@ housePositions.forEach((pos) => {
   scene.add(house);
 });
 
-// --- 6. Comets Setup ---
+// --- 8. Comets Setup ---
 const comets = [];
 function spawnComet() {
   const comet = new THREE.Mesh(
@@ -177,7 +302,7 @@ function spawnComet() {
   comets.push(comet);
 }
 
-// --- 7. Name Tag Sprite ---
+// --- 9. Name Tag Sprite ---
 function createNameTagSprite(text) {
   const canvas = document.createElement('canvas');
   canvas.width = 256; canvas.height = 64;
@@ -193,7 +318,7 @@ function createNameTagSprite(text) {
   return sprite;
 }
 
-// --- 8. Character Mesh Builder (Attack Animation Setup) ---
+// --- 10. Character Mesh Builder ---
 function createKnightMesh(nameTagText) {
   const group = new THREE.Group();
   const armorMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8, roughness: 0.25 });
@@ -249,7 +374,7 @@ function createKnightMesh(nameTagText) {
   return group;
 }
 
-// --- 9. Alien NPCs ---
+// --- 11. Alien NPCs ---
 function createAlienMesh() {
   const alienGroup = new THREE.Group();
   const skinMat = new THREE.MeshStandardMaterial({ color: 0x10b981 });
@@ -272,12 +397,14 @@ function createAlienMesh() {
 const alienNPCs = [];
 for (let i = 0; i < 10; i++) {
   const alien = createAlienMesh();
-  alien.position.set((Math.random() - 0.5) * 120, 0, (Math.random() - 0.5) * 120);
+  const ang = Math.random() * Math.PI * 2;
+  const r = Math.random() * (getIslandRadius(ang) - 20);
+  alien.position.set(Math.cos(ang) * r, 0, Math.sin(ang) * r);
   scene.add(alien);
   alienNPCs.push({ mesh: alien, speed: 0.03 });
 }
 
-// --- 10. Local State & Screen Orbit Controls ---
+// --- 12. Local State & Screen Orbit Controls ---
 let localPlayer = null;
 let localUsername = "Knight";
 let localHealth = 5;
@@ -285,7 +412,6 @@ let isJumping = false;
 let verticalVelocity = 0;
 const remotePlayers = {};
 
-// Camera Rotation Tracking
 let yaw = 0;
 let pitch = 0.2;
 
@@ -317,7 +443,7 @@ document.getElementById('join-btn').addEventListener('click', () => {
   socket.emit('joinGame', localUsername);
 });
 
-// --- 11. Network Multiplayer Handlers ---
+// --- 13. Network Multiplayer Handlers ---
 socket.on('currentPlayers', (players) => {
   Object.keys(players).forEach((id) => {
     if (id !== socket.id && !remotePlayers[id]) {
@@ -372,7 +498,7 @@ socket.on('playerDisconnected', (id) => {
   }
 });
 
-// --- 12. Controls, Weapon Swap, Fight Skill ---
+// --- 14. Controls, Weapon Swap, Fight Skill ---
 const keys = {};
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
@@ -428,7 +554,7 @@ function performAttack() {
   });
 }
 
-// Chat Minimise Toggle Logic
+// Chat Minimise Toggle
 const chatContainer = document.getElementById('chat-container');
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
 chatToggleBtn.addEventListener('click', () => {
@@ -436,7 +562,7 @@ chatToggleBtn.addEventListener('click', () => {
   chatToggleBtn.innerText = chatContainer.classList.contains('chat-minimized') ? '+' : '_';
 });
 
-// Chat Engine
+// Chat Messaging
 const chatInput = document.getElementById('chat-input');
 const chatMessages = document.getElementById('chat-messages');
 
@@ -459,7 +585,7 @@ socket.on('receiveMessage', (data) => {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 });
 
-// --- 13. Main Loop ---
+// --- 15. Main Loop ---
 let walkTimer = 0;
 
 function animate() {
@@ -477,22 +603,25 @@ function animate() {
     if (c.userData.life <= 0) { scene.remove(c); comets.splice(i, 1); }
   }
 
-  // Alien NPCs Movement
+  // Alien NPCs Movement (Restricted inside island borders)
   alienNPCs.forEach((npc) => {
-    npc.mesh.translateZ(-npc.speed);
+    const nextPos = npc.mesh.position.clone().add(new THREE.Vector3(0, 0, -npc.speed).applyAxisAngle(new THREE.Vector3(0, 1, 0), npc.mesh.rotation.y));
+    if (isInsideIsland(nextPos.x, nextPos.z)) {
+      npc.mesh.translateZ(-npc.speed);
+    } else {
+      npc.mesh.rotation.y += Math.PI; // Turn back if reaching island shore
+    }
     npc.mesh.userData.timer += 0.1;
     const swing = Math.sin(npc.mesh.userData.timer) * 0.4;
     npc.mesh.userData.leftLegPivot.rotation.x = swing;
     npc.mesh.userData.rightLegPivot.rotation.x = -swing;
-    if (Math.random() < 0.01) npc.mesh.rotation.y += (Math.random() - 0.5) * 1.5;
   });
 
-  // Local Player & Screen Control
+  // Local Player Movement & Island Boundary Check
   if (localPlayer) {
     let isMoving = false;
     const moveSpeed = 0.14;
 
-    // Arrow Keys Rotate Camera View
     if (document.activeElement !== chatInput) {
       if (keys['ArrowLeft']) yaw += 0.03;
       if (keys['ArrowRight']) yaw -= 0.03;
@@ -502,12 +631,18 @@ function animate() {
 
     localPlayer.rotation.y = yaw;
 
-    // WASD Movement Keys
     if (document.activeElement !== chatInput) {
+      const prevPos = localPlayer.position.clone();
+
       if (keys['KeyW']) { localPlayer.translateZ(-moveSpeed); isMoving = true; }
       if (keys['KeyS']) { localPlayer.translateZ(moveSpeed); isMoving = true; }
       if (keys['KeyA']) { localPlayer.translateX(-moveSpeed); isMoving = true; }
       if (keys['KeyD']) { localPlayer.translateX(moveSpeed); isMoving = true; }
+
+      // Keep player on top of island surface (prevent swimming out of bounds)
+      if (!isInsideIsland(localPlayer.position.x, localPlayer.position.z)) {
+        localPlayer.position.copy(prevPos);
+      }
     }
 
     // Jump Physics
@@ -520,7 +655,7 @@ function animate() {
       }
     }
 
-    // Walking Animation vs Fight Animation
+    // Walking / Attack Animations
     if (localPlayer.userData.isAttacking) {
       localPlayer.userData.attackTimer += 0.25;
       const swing = Math.sin(localPlayer.userData.attackTimer) * 1.8;
@@ -558,9 +693,12 @@ function animate() {
 
     camera.position.set(camX, camY, camZ);
     camera.lookAt(localPlayer.position.x, localPlayer.position.y + 1.5, localPlayer.position.z);
+
+    // Update Mini-map Navigation
+    renderMiniMap();
   }
 
-  // Blowing Cherry Petals Movement
+  // Floating Petals Animation
   const posArr = petalParticles.geometry.attributes.position.array;
   for (let i = 0; i < petalCount; i++) {
     const v = petalVel[i];
