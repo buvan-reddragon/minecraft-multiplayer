@@ -48,7 +48,6 @@ io.on('connection', (socket) => {
     if (players[targetId]) {
       players[targetId].health -= 1;
       if (players[targetId].health <= 0) {
-        // Player dies -> trigger respawn
         players[targetId].health = 5;
         players[targetId].x = (Math.random() - 0.5) * 6;
         players[targetId].y = 0;
