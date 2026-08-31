@@ -1,10 +1,10 @@
 // client.js
 const socket = io();
 
-// --- 1. Basic Three.js Setup ---
+// --- 1. Three.js Core Scene & Camera Setup ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x130a24);
-scene.fog = new THREE.FogExp2(0x231433, 0.005);
+scene.background = new THREE.Color(0x0b0712);
+scene.fog = new THREE.FogExp2(0x191024, 0.005);
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -15,43 +15,34 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // Lighting
-const ambientLight = new THREE.AmbientLight(0x6b4c7a, 0.85);
+const ambientLight = new THREE.AmbientLight(0x7c3aed, 0.85);
 scene.add(ambientLight);
 
-const sunLight = new THREE.DirectionalLight(0xff9933, 2.2);
-sunLight.position.set(140, 150, -260);
-sunLight.castShadow = true;
-scene.add(sunLight);
+const moonLight = new THREE.DirectionalLight(0xe0e7ff, 2.0);
+moonLight.position.set(120, 180, -220);
+moonLight.castShadow = true;
+scene.add(moonLight);
 
-// --- 2. Custom Island Map & Surrounding Ocean Setup ---
-// Math shape function defining the custom island boundary from the provided map image
+// --- 2. Custom Island Map & Ocean ---
 function getIslandRadius(angle) {
   const baseR = 140;
-  const distortion = Math.sin(angle * 2) * 20 + Math.cos(angle * 3) * 15 - Math.sin(angle * 5) * 10;
-  return baseR + distortion;
+  return baseR + Math.sin(angle * 2) * 20 + Math.cos(angle * 3) * 15 - Math.sin(angle * 5) * 10;
 }
 
 function isInsideIsland(x, z) {
   const angle = Math.atan2(z, x);
-  const dist = Math.sqrt(x * x + z * z);
-  return dist <= getIslandRadius(angle);
+  return Math.sqrt(x * x + z * z) <= getIslandRadius(angle);
 }
 
-// Ocean Water Geometry
-const seaGeo = new THREE.PlaneGeometry(800, 800);
-const seaMat = new THREE.MeshStandardMaterial({
-  color: 0x0284c7,
-  roughness: 0.1,
-  metalness: 0.8,
-  transparent: true,
-  opacity: 0.85
-});
-const sea = new THREE.Mesh(seaGeo, seaMat);
-sea.rotation.x = -Math.PI / 2;
-sea.position.y = -0.5;
+// Ocean Surface
+const sea = new THREE.Mesh(
+  new THREE.PlaneGeometry(800, 800),
+  new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1, metalness: 0.8, transparent: true, opacity: 0.85 })
+);
+sea.rotation.x = -Math.PI / 2; sea.position.y = -0.5;
 scene.add(sea);
 
-// Custom Shaped Island Land Mesh
+// Custom Shaped Land
 const islandGeo = new THREE.PlaneGeometry(350, 350, 128, 128);
 islandGeo.rotateX(-Math.PI / 2);
 const posAttr = islandGeo.attributes.position;
@@ -62,129 +53,89 @@ for (let i = 0; i < posAttr.count; i++) {
   const angle = Math.atan2(z, x);
   const r = getIslandRadius(angle);
   const dist = Math.sqrt(x * x + z * z);
+  const lakeDist = Math.sqrt(Math.pow(x - 30, 2) + Math.pow(z + 20, 2));
 
-  // Shoreline and inland lake formation
-  const lakeDist = Math.sqrt(Math.pow(x - 30, 2) + Math.pow(z - (-20), 2));
-
-  if (lakeDist < 12) {
-    posAttr.setY(i, -0.8); // Inland lake pit
-  } else if (dist > r) {
-    posAttr.setY(i, -3.0); // Ocean floor
-  } else if (dist > r - 12) {
-    const t = (r - dist) / 12;
-    posAttr.setY(i, (1 - t) * -2.0); // Beach slope
-  } else {
-    posAttr.setY(i, 0); // Flat land
-  }
+  if (lakeDist < 12) posAttr.setY(i, -0.8);
+  else if (dist > r) posAttr.setY(i, -3.0);
+  else if (dist > r - 12) posAttr.setY(i, ((r - dist) / 12 - 1) * 2.0);
+  else posAttr.setY(i, 0);
 }
 islandGeo.computeVertexNormals();
 
-const landMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.85 });
-const island = new THREE.Mesh(islandGeo, landMat);
+const island = new THREE.Mesh(islandGeo, new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.85 }));
 island.receiveShadow = true;
 scene.add(island);
 
-// Sand Shore Border Ring
-const sandGeo = new THREE.RingGeometry(110, 160, 64);
-sandGeo.rotateX(-Math.PI / 2);
-const sandMat = new THREE.MeshBasicMaterial({ color: 0xeab308, side: THREE.DoubleSide });
-const sandRing = new THREE.Mesh(sandGeo, sandMat);
+// Sand Shoreline Border
+const sandRing = new THREE.Mesh(
+  new THREE.RingGeometry(110, 160, 64).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0xeab308, side: THREE.DoubleSide })
+);
 sandRing.position.y = -0.1;
 scene.add(sandRing);
 
-// --- 3. Mini-map Radar Navigation System ---
-const miniMapContainer = document.createElement('div');
-miniMapContainer.id = 'minimap-container';
-miniMapContainer.style.cssText = `
-  position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px;
-  border-radius: 50%; border: 3px solid #f59e0b; background: rgba(2, 132, 199, 0.8);
-  overflow: hidden; box-shadow: 0 0 15px rgba(0,0,0,0.6); z-index: 100;
-`;
-document.body.appendChild(miniMapContainer);
+// --- 3. Rotating Moon & Sky Stars ---
+function createMoonTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#d1d5db'; ctx.fillRect(0, 0, 512, 512);
 
-const miniCanvas = document.createElement('canvas');
-miniCanvas.width = 150;
-miniCanvas.height = 150;
-miniMapContainer.appendChild(miniCanvas);
-const miniCtx = miniCanvas.getContext('2d');
-
-function renderMiniMap() {
-  if (!localPlayer) return;
-  miniCtx.clearRect(0, 0, 150, 150);
-
-  const cx = 75;
-  const cy = 75;
-  const mapScale = 0.45;
-
-  // Render Green Island Contour
-  miniCtx.fillStyle = '#22c55e';
-  miniCtx.beginPath();
-  for (let a = 0; a <= Math.PI * 2; a += 0.1) {
-    const r = getIslandRadius(a) * mapScale;
-    const mapX = cx + (r * Math.cos(a) - localPlayer.position.x * mapScale);
-    const mapY = cy + (r * Math.sin(a) - localPlayer.position.z * mapScale);
-    if (a === 0) miniCtx.moveTo(mapX, mapY);
-    else miniCtx.lineTo(mapX, mapY);
+  // Procedural Craters
+  for (let i = 0; i < 90; i++) {
+    const x = Math.random() * 512, y = Math.random() * 512, r = Math.random() * 35 + 5;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(75, 85, 99, 0.35)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(55, 65, 81, 0.5)'; ctx.lineWidth = 2; ctx.stroke();
   }
-  miniCtx.closePath();
-  miniCtx.fill();
-
-  // Render Central Spawn Portal Icon
-  const portalMapX = cx + (0 - localPlayer.position.x) * mapScale;
-  const portalMapY = cy + (0 - localPlayer.position.z) * mapScale;
-  miniCtx.fillStyle = '#06b6d4';
-  miniCtx.beginPath();
-  miniCtx.arc(portalMapX, portalMapY, 4, 0, Math.PI * 2);
-  miniCtx.fill();
-
-  // Render Remote Multiplayer Players (Red Dots)
-  Object.keys(remotePlayers).forEach((id) => {
-    const rp = remotePlayers[id];
-    const rx = cx + (rp.position.x - localPlayer.position.x) * mapScale;
-    const ry = cy + (rp.position.z - localPlayer.position.z) * mapScale;
-    miniCtx.fillStyle = '#ef4444';
-    miniCtx.beginPath();
-    miniCtx.arc(rx, ry, 3, 0, Math.PI * 2);
-    miniCtx.fill();
-  });
-
-  // Render Local Player Indicator (Yellow Arrow / Dot)
-  miniCtx.fillStyle = '#f59e0b';
-  miniCtx.beginPath();
-  miniCtx.arc(cx, cy, 5, 0, Math.PI * 2);
-  miniCtx.fill();
-  miniCtx.strokeStyle = '#ffffff';
-  miniCtx.lineWidth = 1.5;
-  miniCtx.stroke();
+  return new THREE.CanvasTexture(canvas);
 }
 
-// --- 4. Sky Stars & Ringed Orbital Planet ---
+const moonMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(22, 32, 32),
+  new THREE.MeshStandardMaterial({ map: createMoonTexture(), roughness: 0.9 })
+);
+moonMesh.position.set(140, 130, -220);
+scene.add(moonMesh);
+
+// Sky Starfield
 const starGeo = new THREE.BufferGeometry();
-const starCount = 800;
-const starPos = new Float32Array(starCount * 3);
-for (let i = 0; i < starCount * 3; i += 3) {
+const starPos = new Float32Array(800 * 3);
+for (let i = 0; i < 800 * 3; i += 3) {
   starPos[i] = (Math.random() - 0.5) * 600;
-  starPos[i + 1] = Math.random() * 200 + 30;
+  starPos[i + 1] = Math.random() * 250 + 20;
   starPos[i + 2] = (Math.random() - 0.5) * 600;
 }
 starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.8, transparent: true, opacity: 0.85 })));
+scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.95, transparent: true, opacity: 0.85 })));
 
-const planetGroup = new THREE.Group();
-const planetMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(25, 32, 32),
-  new THREE.MeshStandardMaterial({ color: 0xc2783c, roughness: 0.7 })
-);
-planetGroup.add(planetMesh);
+// --- 4. Spinning Sky Wormhole Portal ---
+const skyWormholeGroup = new THREE.Group();
+skyWormholeGroup.position.set(0, 45, 0);
 
-const ringMesh = new THREE.Mesh(
-  new THREE.RingGeometry(32, 45, 64),
-  new THREE.MeshBasicMaterial({ color: 0xe0a96d, side: THREE.DoubleSide, transparent: true, opacity: 0.7 })
+const wormholeCore = new THREE.Mesh(
+  new THREE.SphereGeometry(4.5, 32, 32),
+  new THREE.MeshBasicMaterial({ color: 0xa855f7, wireframe: true })
 );
-ringMesh.rotation.x = Math.PI / 3;
-planetGroup.add(ringMesh);
-planetGroup.position.set(-180, 110, -260);
-scene.add(planetGroup);
+skyWormholeGroup.add(wormholeCore);
+
+for (let i = 1; i <= 4; i++) {
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(i * 2.8, 0.35, 16, 64),
+    new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x06b6d4 : 0xec4899, transparent: true, opacity: 0.8 })
+  );
+  ring.rotation.x = Math.PI / 2 + (i * 0.2);
+  skyWormholeGroup.add(ring);
+}
+scene.add(skyWormholeGroup);
+
+// Ground Spawn Hub Ring
+const groundPortal = new THREE.Mesh(
+  new THREE.TorusGeometry(4.0, 0.3, 16, 64).rotateX(Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0x06b6d4 })
+);
+groundPortal.position.y = 0.1;
+scene.add(groundPortal);
 
 // --- 5. Cherry Blossom Forest & Wind Petals ---
 function createCherryTree() {
@@ -220,8 +171,8 @@ for (let i = 0; i < 70; i++) {
   scene.add(tree);
 }
 
-// Wind-driven Floating Petals
-const petalCount = 450;
+// Petals
+const petalCount = 400;
 const petalGeo = new THREE.BufferGeometry();
 const petalPos = new Float32Array(petalCount * 3);
 const petalVel = [];
@@ -235,74 +186,7 @@ petalGeo.setAttribute('position', new THREE.BufferAttribute(petalPos, 3));
 const petalParticles = new THREE.Points(petalGeo, new THREE.PointsMaterial({ color: 0xffb7c5, size: 0.28, transparent: true, opacity: 0.85 }));
 scene.add(petalParticles);
 
-// --- 6. Spawn Portal Hub (Center World) ---
-const portalGroup = new THREE.Group();
-const portalRing = new THREE.Mesh(
-  new THREE.TorusGeometry(3.5, 0.25, 16, 100),
-  new THREE.MeshBasicMaterial({ color: 0x06b6d4 })
-);
-portalRing.rotation.x = Math.PI / 2;
-portalRing.position.y = 0.1;
-portalGroup.add(portalRing);
-
-const portalPillar = new THREE.Mesh(
-  new THREE.CylinderGeometry(3.2, 3.2, 0.1, 32),
-  new THREE.MeshBasicMaterial({ color: 0x0891b2, transparent: true, opacity: 0.4 })
-);
-portalPillar.position.y = 0.05;
-portalGroup.add(portalPillar);
-scene.add(portalGroup);
-
-// --- 7. Village House Setup ---
-function createHouse() {
-  const houseGroup = new THREE.Group();
-  const walls = new THREE.Mesh(
-    new THREE.BoxGeometry(6, 4, 6),
-    new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 })
-  );
-  walls.position.y = 2; walls.castShadow = true; walls.receiveShadow = true;
-  houseGroup.add(walls);
-
-  const roof = new THREE.Mesh(
-    new THREE.ConeGeometry(5.2, 2.5, 4),
-    new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.6 })
-  );
-  roof.position.y = 5.25; roof.rotation.y = Math.PI / 4; roof.castShadow = true;
-  houseGroup.add(roof);
-
-  const door = new THREE.Mesh(
-    new THREE.BoxGeometry(1.2, 2.2, 0.1),
-    new THREE.MeshStandardMaterial({ color: 0x27272a })
-  );
-  door.position.set(0, 1.1, 3.01);
-  houseGroup.add(door);
-  return houseGroup;
-}
-
-const housePositions = [
-  { x: -25, z: -25 }, { x: 25, z: -30 }, { x: -35, z: 20 },
-  { x: 30, z: 25 }, { x: -50, z: -10 }, { x: 45, z: -10 }
-];
-housePositions.forEach((pos) => {
-  const house = createHouse();
-  house.position.set(pos.x, 0, pos.z);
-  scene.add(house);
-});
-
-// --- 8. Comets Setup ---
-const comets = [];
-function spawnComet() {
-  const comet = new THREE.Mesh(
-    new THREE.SphereGeometry(0.6, 8, 8),
-    new THREE.MeshBasicMaterial({ color: 0x60a5fa })
-  );
-  comet.position.set((Math.random() - 0.5) * 400, 80 + Math.random() * 40, -200 - Math.random() * 100);
-  comet.userData = { vel: new THREE.Vector3(1.8 + Math.random(), -0.6, 0.8), life: 120 };
-  scene.add(comet);
-  comets.push(comet);
-}
-
-// --- 9. Name Tag Sprite ---
+// --- 6. Name Tag Sprite ---
 function createNameTagSprite(text) {
   const canvas = document.createElement('canvas');
   canvas.width = 256; canvas.height = 64;
@@ -318,7 +202,7 @@ function createNameTagSprite(text) {
   return sprite;
 }
 
-// --- 10. Character Mesh Builder ---
+// --- 7. Character Mesh Builder ---
 function createKnightMesh(nameTagText) {
   const group = new THREE.Group();
   const armorMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8, roughness: 0.25 });
@@ -348,7 +232,7 @@ function createKnightMesh(nameTagText) {
   const rightArmPivot = new THREE.Group(); rightArmPivot.position.set(0.65, 1.6, 0);
   rightArmPivot.add(new THREE.Mesh(armLegGeo, armorMat));
 
-  // --- Sword ---
+  // Sword & Bow
   const swordGroup = new THREE.Group();
   const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.08), goldMat);
   hilt.position.set(0, -0.8, 0.25); swordGroup.add(hilt);
@@ -356,7 +240,6 @@ function createKnightMesh(nameTagText) {
   blade.position.set(0, -1.35, 0.25); swordGroup.add(blade);
   rightArmPivot.add(swordGroup);
 
-  // --- Bow ---
   const bowGroup = new THREE.Group();
   const bowCurve = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.03, 8, 24, Math.PI), new THREE.MeshBasicMaterial({ color: 0x78350f }));
   bowCurve.rotation.z = -Math.PI / 2; bowCurve.position.set(0, -0.8, 0.3); bowGroup.add(bowCurve);
@@ -368,20 +251,28 @@ function createKnightMesh(nameTagText) {
 
   group.userData = {
     leftLegPivot, rightLegPivot, leftArmPivot, rightArmPivot,
-    swordGroup, bowGroup, currentWeapon: 'sword', walkTimer: 0,
+    swordGroup, bowGroup, currentWeapon: 'sword',
     isAttacking: false, attackTimer: 0
   };
   return group;
 }
 
-// --- 11. Alien NPCs ---
+// --- 8. Alien Mesh (Without Name Tag) ---
 function createAlienMesh() {
   const alienGroup = new THREE.Group();
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0x10b981 });
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.18, 1.1, 8), skinMat);
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.5 });
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.18, 1.1, 8), skinMat);
   body.position.y = 1.0; alienGroup.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 16), skinMat);
-  head.position.y = 1.8; alienGroup.add(head);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 16), skinMat);
+  head.position.y = 1.85; alienGroup.add(head);
+
+  const eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), eyeMat);
+  eye1.position.set(-0.15, 1.95, 0.35); alienGroup.add(eye1);
+  const eye2 = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), eyeMat);
+  eye2.position.set(0.15, 1.95, 0.35); alienGroup.add(eye2);
 
   const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.9); legGeo.translate(0, -0.45, 0);
   const leftLegPivot = new THREE.Group(); leftLegPivot.position.set(-0.15, 0.9, 0);
@@ -389,29 +280,76 @@ function createAlienMesh() {
   const rightLegPivot = new THREE.Group(); rightLegPivot.position.set(0.15, 0.9, 0);
   rightLegPivot.add(new THREE.Mesh(legGeo, skinMat)); alienGroup.add(rightLegPivot);
 
-  alienGroup.add(createNameTagSprite('Alien NPC'));
-  alienGroup.userData = { leftLegPivot, rightLegPivot, timer: 0 };
+  // Note: NO Name Tag Sprite added as requested!
+  alienGroup.userData = { leftLegPivot, rightLegPivot, timer: 0, hp: 3, lastAttackTime: 0 };
   return alienGroup;
 }
 
+// Auto-Spawning Aliens Array
 const alienNPCs = [];
-for (let i = 0; i < 10; i++) {
+function spawnAlien() {
   const alien = createAlienMesh();
   const ang = Math.random() * Math.PI * 2;
-  const r = Math.random() * (getIslandRadius(ang) - 20);
+  const r = 20 + Math.random() * (getIslandRadius(ang) - 35);
   alien.position.set(Math.cos(ang) * r, 0, Math.sin(ang) * r);
   scene.add(alien);
-  alienNPCs.push({ mesh: alien, speed: 0.03 });
+  alienNPCs.push({ mesh: alien, speed: 0.045 });
 }
 
-// --- 12. Local State & Screen Orbit Controls ---
+for (let i = 0; i < 18; i++) spawnAlien();
+
+// --- 9. Fatty Jelly Boss Mesh & Mechanics ---
+let bossMesh = null;
+let bossHP = 500;
+let maxBossHP = 500;
+let totalAlienKills = 0;
+
+function createFattyJellyBoss() {
+  const group = new THREE.Group();
+  const jellyMat = new THREE.MeshStandardMaterial({
+    color: 0xec4899, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.85
+  });
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(6, 32, 32), jellyMat);
+  body.scale.set(1.2, 0.8, 1.2);
+  body.position.y = 4.2; group.add(body);
+
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+  for (let i = -1; i <= 1; i += 2) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), eyeMat);
+    eye.position.set(i * 1.8, 5.2, 5.0); group.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), pupilMat);
+    pupil.position.set(i * 1.8, 5.2, 5.7); group.add(pupil);
+  }
+
+  group.position.set(0, 0, -30);
+  group.userData = { timer: 0, lastAttackTime: 0 };
+  return group;
+}
+
+function spawnBossEvent() {
+  if (bossMesh) return;
+  bossMesh = createFattyJellyBoss();
+  scene.add(bossMesh);
+  document.getElementById('boss-hud').style.display = 'flex';
+
+  const chatMessages = document.getElementById('chat-messages');
+  const msgEl = document.createElement('div');
+  msgEl.innerHTML = `<strong style="color: #ec4899;">⚠️ WARNING: 100 Aliens Slain! Fatty Jelly Boss Has Spawned!</strong>`;
+  chatMessages.appendChild(msgEl);
+}
+
+// --- 10. Local Player & Free 360° Camera ---
 let localPlayer = null;
 let localUsername = "Knight";
-let localHealth = 5;
+let localHealth = 100;
 let isJumping = false;
 let verticalVelocity = 0;
 const remotePlayers = {};
 
+// Full 360 Camera Controls (Unrestricted Sky Pitch)
 let yaw = 0;
 let pitch = 0.2;
 
@@ -425,11 +363,12 @@ document.addEventListener('mousemove', (e) => {
   if (document.pointerLockElement === renderer.domElement) {
     yaw -= e.movementX * 0.003;
     pitch += e.movementY * 0.003;
-    pitch = Math.max(0.05, Math.min(Math.PI / 3, pitch));
+    // Allow looking straight up (full 360 view)
+    pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
   }
 });
 
-// Join Game Action
+// Join Game
 document.getElementById('join-btn').addEventListener('click', () => {
   const input = document.getElementById('username-input').value.trim();
   if (input !== "") localUsername = input;
@@ -437,13 +376,13 @@ document.getElementById('join-btn').addEventListener('click', () => {
   document.getElementById('name-portal').style.display = 'none';
 
   localPlayer = createKnightMesh(localUsername);
-  localPlayer.position.set(0, 0, 0);
+  localPlayer.position.set(0, 45, 0); // Spawn falling from Sky Wormhole
   scene.add(localPlayer);
 
   socket.emit('joinGame', localUsername);
 });
 
-// --- 13. Network Multiplayer Handlers ---
+// --- 11. Network Handlers ---
 socket.on('currentPlayers', (players) => {
   Object.keys(players).forEach((id) => {
     if (id !== socket.id && !remotePlayers[id]) {
@@ -475,19 +414,17 @@ socket.on('playerMoved', (data) => {
 socket.on('healthUpdate', (data) => {
   if (data.id === socket.id) {
     localHealth = data.health;
-    document.getElementById('health-bar-fill').style.width = `${(localHealth / 5) * 100}%`;
-    document.getElementById('health-text').innerText = `HP: ${localHealth} / 5`;
+    updateHealthUI();
   }
 });
 
 socket.on('playerRespawned', (data) => {
   if (data.id === socket.id) {
-    localHealth = 5;
-    document.getElementById('health-bar-fill').style.width = `100%`;
-    document.getElementById('health-text').innerText = `HP: 5 / 5`;
-    localPlayer.position.set(data.x, 0, data.z);
+    localHealth = 100;
+    updateHealthUI();
+    localPlayer.position.set(data.x, 45, data.z); // Dropped from Sky Wormhole
   } else if (remotePlayers[data.id]) {
-    remotePlayers[data.id].position.set(data.x, 0, data.z);
+    remotePlayers[data.id].position.set(data.x, 45, data.z);
   }
 });
 
@@ -498,14 +435,20 @@ socket.on('playerDisconnected', (id) => {
   }
 });
 
-// --- 14. Controls, Weapon Swap, Fight Skill ---
+function updateHealthUI() {
+  const fill = document.getElementById('health-bar-fill');
+  fill.style.width = `${(localHealth / 100) * 100}%`;
+  document.getElementById('health-text').innerText = `HP: ${localHealth} / 100`;
+  fill.style.backgroundColor = localHealth > 50 ? '#22c55e' : (localHealth > 25 ? '#f59e0b' : '#ef4444');
+}
+
+// --- 12. Controls & Combat vs Aliens ---
 const keys = {};
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
-
   if (document.activeElement === document.getElementById('chat-input')) return;
 
-  // Equip Weapon: E Key
+  // Swap Weapon: E
   if (e.code === 'KeyE' && localPlayer) {
     if (localPlayer.userData.currentWeapon === 'sword') {
       localPlayer.userData.currentWeapon = 'bow';
@@ -522,39 +465,65 @@ window.addEventListener('keydown', (e) => {
     }
   }
 
-  // Jump: Space Key
-  if (e.code === 'Space' && !isJumping && localPlayer) {
+  // Jump: Space
+  if (e.code === 'Space' && !isJumping && localPlayer && localPlayer.position.y <= 0.1) {
     isJumping = true;
     verticalVelocity = 0.22;
   }
 
-  // Fight Attack: F Key
+  // Attack / Fight Skill: F
   if (e.code === 'KeyF' && localPlayer) {
-    triggerAttackAnimation();
-    performAttack();
+    localPlayer.userData.isAttacking = true;
+    localPlayer.userData.attackTimer = 0;
+    performAttackOnAliens();
   }
 });
 
 window.addEventListener('keyup', (e) => (keys[e.code] = false));
 
-function triggerAttackAnimation() {
-  if (localPlayer) {
-    localPlayer.userData.isAttacking = true;
-    localPlayer.userData.attackTimer = 0;
+// Attack Logic targeting Aliens and Boss
+function performAttackOnAliens() {
+  if (!localPlayer) return;
+  const range = localPlayer.userData.currentWeapon === 'sword' ? 3.8 : 22;
+
+  // Attack Alien NPCs
+  for (let i = alienNPCs.length - 1; i >= 0; i--) {
+    const alien = alienNPCs[i].mesh;
+    if (localPlayer.position.distanceTo(alien.position) <= range) {
+      alien.userData.hp -= 1;
+      // Flash Alien Red on hit
+      alien.children[0].material.color.setHex(0xef4444);
+      setTimeout(() => alien.children[0].material.color.setHex(0x10b981), 150);
+
+      if (alien.userData.hp <= 0) {
+        scene.remove(alien);
+        alienNPCs.splice(i, 1);
+        totalAlienKills++;
+        document.getElementById('kill-counter').innerText = `Aliens Slain: ${totalAlienKills} / 100`;
+
+        // Check Boss Spawn Requirement
+        if (totalAlienKills >= 100) spawnBossEvent();
+
+        // Respawn new Alien
+        setTimeout(spawnAlien, 2000);
+      }
+    }
+  }
+
+  // Attack Fatty Jelly Boss
+  if (bossMesh && localPlayer.position.distanceTo(bossMesh.position) <= range + 4) {
+    bossHP = Math.max(0, bossHP - 15);
+    document.getElementById('boss-hp-fill').style.width = `${(bossHP / maxBossHP) * 100}%`;
+    if (bossHP <= 0) {
+      scene.remove(bossMesh);
+      bossMesh = null;
+      document.getElementById('boss-hud').style.display = 'none';
+      alert("🎉 CONGRATULATIONS! You defeated the Fatty Jelly Boss!");
+    }
   }
 }
 
-function performAttack() {
-  const attackRange = localPlayer.userData.currentWeapon === 'sword' ? 2.5 : 18;
-  Object.keys(remotePlayers).forEach((targetId) => {
-    const target = remotePlayers[targetId];
-    if (localPlayer.position.distanceTo(target.position) <= attackRange) {
-      socket.emit('playerHit', targetId);
-    }
-  });
-}
-
-// Chat Minimise Toggle
+// Chat Minimise
 const chatContainer = document.getElementById('chat-container');
 const chatToggleBtn = document.getElementById('chat-toggle-btn');
 chatToggleBtn.addEventListener('click', () => {
@@ -562,10 +531,9 @@ chatToggleBtn.addEventListener('click', () => {
   chatToggleBtn.innerText = chatContainer.classList.contains('chat-minimized') ? '+' : '_';
 });
 
-// Chat Messaging
+// Chat Engine
 const chatInput = document.getElementById('chat-input');
 const chatMessages = document.getElementById('chat-messages');
-
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Enter') {
     if (document.activeElement === chatInput) {
@@ -585,52 +553,81 @@ socket.on('receiveMessage', (data) => {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 });
 
-// --- 15. Main Loop ---
+// --- 13. Main Game Loop ---
 let walkTimer = 0;
+const now = () => performance.now();
 
 function animate() {
   requestAnimationFrame(animate);
 
-  portalRing.rotation.z += 0.02;
-  planetGroup.rotation.y += 0.002;
+  // Rotate Celestial Bodies & Wormhole
+  skyWormholeGroup.rotation.y += 0.03;
+  wormholeCore.rotation.z += 0.02;
+  groundPortal.rotation.z += 0.02;
+  moonMesh.rotation.y += 0.0015;
 
-  // Sky Comets
-  if (Math.random() < 0.02) spawnComet();
-  for (let i = comets.length - 1; i >= 0; i--) {
-    const c = comets[i];
-    c.position.add(c.userData.vel);
-    c.userData.life--;
-    if (c.userData.life <= 0) { scene.remove(c); comets.splice(i, 1); }
-  }
-
-  // Alien NPCs Movement (Restricted inside island borders)
+  // Alien NPCs AI: Seek & Attack Player
   alienNPCs.forEach((npc) => {
-    const nextPos = npc.mesh.position.clone().add(new THREE.Vector3(0, 0, -npc.speed).applyAxisAngle(new THREE.Vector3(0, 1, 0), npc.mesh.rotation.y));
-    if (isInsideIsland(nextPos.x, nextPos.z)) {
-      npc.mesh.translateZ(-npc.speed);
-    } else {
-      npc.mesh.rotation.y += Math.PI; // Turn back if reaching island shore
+    const alien = npc.mesh;
+    if (localPlayer) {
+      const dist = alien.position.distanceTo(localPlayer.position);
+      if (dist < 22) {
+        // Turn towards local player & pursue
+        alien.lookAt(localPlayer.position.x, alien.position.y, localPlayer.position.z);
+        alien.translateZ(npc.speed);
+
+        // Attack local player if close (-5 HP)
+        if (dist <= 2.2 && now() - alien.userData.lastAttackTime > 1200) {
+          alien.userData.lastAttackTime = now();
+          socket.emit('playerDamage', 5);
+        }
+      } else {
+        alien.translateZ(npc.speed * 0.5);
+        if (Math.random() < 0.01) alien.rotation.y += (Math.random() - 0.5) * 1.5;
+      }
     }
-    npc.mesh.userData.timer += 0.1;
-    const swing = Math.sin(npc.mesh.userData.timer) * 0.4;
-    npc.mesh.userData.leftLegPivot.rotation.x = swing;
-    npc.mesh.userData.rightLegPivot.rotation.x = -swing;
+
+    // Alien Leg Animation
+    alien.userData.timer += 0.12;
+    const swing = Math.sin(alien.userData.timer) * 0.4;
+    alien.userData.leftLegPivot.rotation.x = swing;
+    alien.userData.rightLegPivot.rotation.x = -swing;
   });
 
-  // Local Player Movement & Island Boundary Check
+  // Fatty Jelly Boss AI & Wobble Animation
+  if (bossMesh && localPlayer) {
+    bossMesh.userData.timer += 0.05;
+    const wobble = Math.sin(bossMesh.userData.timer) * 0.15;
+    bossMesh.children[0].scale.set(1.2 + wobble, 0.8 - wobble, 1.2 + wobble);
+
+    const bossDist = bossMesh.position.distanceTo(localPlayer.position);
+    if (bossDist > 4) {
+      bossMesh.lookAt(localPlayer.position.x, 0, localPlayer.position.z);
+      bossMesh.translateZ(0.06);
+    }
+    // Boss Stomp Attack (-15 HP)
+    if (bossDist <= 6 && now() - bossMesh.userData.lastAttackTime > 1500) {
+      bossMesh.userData.lastAttackTime = now();
+      socket.emit('playerDamage', 15);
+    }
+  }
+
+  // Local Player Sky Fall & Land Physics
   if (localPlayer) {
     let isMoving = false;
     const moveSpeed = 0.14;
 
+    // Arrow Key Free 360 Orbit Camera Control
     if (document.activeElement !== chatInput) {
       if (keys['ArrowLeft']) yaw += 0.03;
       if (keys['ArrowRight']) yaw -= 0.03;
-      if (keys['ArrowUp']) pitch = Math.min(Math.PI / 3, pitch + 0.02);
-      if (keys['ArrowDown']) pitch = Math.max(0.05, pitch - 0.02);
+      if (keys['ArrowUp']) pitch = Math.min(Math.PI / 2 - 0.05, pitch + 0.025);
+      if (keys['ArrowDown']) pitch = Math.max(-Math.PI / 2 + 0.05, pitch - 0.025);
     }
 
     localPlayer.rotation.y = yaw;
 
+    // WASD Movement
     if (document.activeElement !== chatInput) {
       const prevPos = localPlayer.position.clone();
 
@@ -639,10 +636,14 @@ function animate() {
       if (keys['KeyA']) { localPlayer.translateX(-moveSpeed); isMoving = true; }
       if (keys['KeyD']) { localPlayer.translateX(moveSpeed); isMoving = true; }
 
-      // Keep player on top of island surface (prevent swimming out of bounds)
       if (!isInsideIsland(localPlayer.position.x, localPlayer.position.z)) {
         localPlayer.position.copy(prevPos);
       }
+    }
+
+    // Sky Wormhole Fall / Gravity Landing Physics
+    if (localPlayer.position.y > 0) {
+      localPlayer.position.y = Math.max(0, localPlayer.position.y - 0.45);
     }
 
     // Jump Physics
@@ -655,7 +656,7 @@ function animate() {
       }
     }
 
-    // Walking / Attack Animations
+    // Fight Slash Animation
     if (localPlayer.userData.isAttacking) {
       localPlayer.userData.attackTimer += 0.25;
       const swing = Math.sin(localPlayer.userData.attackTimer) * 1.8;
@@ -685,7 +686,7 @@ function animate() {
       rotation: localPlayer.rotation.y
     });
 
-    // Camera Orbit View
+    // Camera 360 Orbiting View
     const camDist = 8;
     const camX = localPlayer.position.x + camDist * Math.sin(yaw) * Math.cos(pitch);
     const camY = localPlayer.position.y + camDist * Math.sin(pitch) + 1.8;
@@ -693,9 +694,6 @@ function animate() {
 
     camera.position.set(camX, camY, camZ);
     camera.lookAt(localPlayer.position.x, localPlayer.position.y + 1.5, localPlayer.position.z);
-
-    // Update Mini-map Navigation
-    renderMiniMap();
   }
 
   // Floating Petals Animation

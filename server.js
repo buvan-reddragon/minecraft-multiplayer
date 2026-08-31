@@ -21,12 +21,10 @@ io.on('connection', (socket) => {
       id: socket.id,
       name: username || `Knight_${socket.id.substring(0, 4)}`,
       x: (Math.random() - 0.5) * 6,
-      y: 0,
+      y: 45, // Spawn high up in middle of Sky Wormhole
       z: (Math.random() - 0.5) * 6,
       rotation: 0,
-      isMoving: false,
-      health: 5,
-      weapon: 'sword'
+      health: 100
     };
 
     socket.emit('currentPlayers', players);
@@ -40,21 +38,17 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('playerAttack', (attackData) => {
-    socket.broadcast.emit('remoteAttack', { id: socket.id, ...attackData });
-  });
-
-  socket.on('playerHit', (targetId) => {
-    if (players[targetId]) {
-      players[targetId].health -= 1;
-      if (players[targetId].health <= 0) {
-        players[targetId].health = 5;
-        players[targetId].x = (Math.random() - 0.5) * 6;
-        players[targetId].y = 0;
-        players[targetId].z = (Math.random() - 0.5) * 6;
-        io.emit('playerRespawned', players[targetId]);
+  socket.on('playerDamage', (amount) => {
+    if (players[socket.id]) {
+      players[socket.id].health = Math.max(0, players[socket.id].health - amount);
+      if (players[socket.id].health <= 0) {
+        players[socket.id].health = 100;
+        players[socket.id].x = (Math.random() - 0.5) * 6;
+        players[socket.id].y = 45; // Respawn falling from Sky Wormhole
+        players[socket.id].z = (Math.random() - 0.5) * 6;
+        io.emit('playerRespawned', players[socket.id]);
       } else {
-        io.emit('healthUpdate', { id: targetId, health: players[targetId].health });
+        socket.emit('healthUpdate', { id: socket.id, health: players[socket.id].health });
       }
     }
   });
