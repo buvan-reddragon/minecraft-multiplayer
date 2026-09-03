@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Arcadia of Knight - Gun, Horse & Minimap Update</title>
+  <title>Arcadia of Knight</title>
   <style>
     * { box-sizing: border-box; user-select: none; }
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
-      overflow: hidden; background-color: #0b0712;
+      overflow: hidden; background-color: #38bdf8;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
     #name-portal {
       position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-      background: rgba(10, 5, 20, 0.92); z-index: 200; display: flex;
+      background: rgba(15, 23, 42, 0.92); z-index: 200; display: flex;
       flex-direction: column; justify-content: center; align-items: center; color: white;
     }
     #name-portal h1 { color: #f59e0b; margin-bottom: 8px; text-shadow: 0 0 10px rgba(245, 158, 11, 0.5); }
@@ -127,7 +127,7 @@
       <div id="health-bar-fill"></div>
       <div id="health-text">HP: 100 / 100</div>
     </div>
-    <div id="kill-counter">Aliens Slain: 0 / 100</div>
+    <div id="kill-counter">Hendermen Slain: 0 / 100</div>
     <div id="weapon-indicator">Weapon: RIFLE GUN</div>
   </div>
 
@@ -144,8 +144,9 @@
 
   <div id="instructions">
     ⚔️ <b>Knight Controls:</b><br>
-    • Move: <b>W A S D</b><br>
+    • Move: <b>W A S D</b> (With Walking Animation)<br>
     • Jump Skill: <b>Space</b><br>
+    • Chat Box: <b>Enter Key</b><br>
     • Mount / Dismount Horse: <b>H</b><br>
     • Toggle Aiming Camera: <b>F</b><br>
     • Shoot Gun Bullet: <b>G</b><br>
@@ -158,7 +159,7 @@
       <button id="chat-toggle-btn" style="background:none; border:none; color:#f59e0b; cursor:pointer; font-weight:bold;">_</button>
     </div>
     <div id="chat-messages">
-      <div style="color: #94a3b8; font-style: italic;">Welcome to Arcadia of Knight! Press F to Aim & G to Fire!</div>
+      <div style="color: #94a3b8; font-style: italic;">Press Enter to activate/send Chat!</div>
     </div>
     <input type="text" id="chat-input" placeholder="Press Enter to chat..." autocomplete="off" />
   </div>

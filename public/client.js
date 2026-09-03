@@ -1,10 +1,10 @@
 // client.js
 const socket = io();
 
-// --- 1. Three.js Core Scene & Camera Setup ---
+// --- 1. Three.js Core Scene & Daytime Ambience Setup ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0b0712);
-scene.fog = new THREE.FogExp2(0x191024, 0.005);
+scene.background = new THREE.Color(0x7dd3fc); // Daytime bright blue sky
+scene.fog = new THREE.FogExp2(0xbae6fd, 0.003);
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -14,14 +14,14 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0x7c3aed, 0.85);
+// Daytime Sun & Ambient Lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
 scene.add(ambientLight);
 
-const moonLight = new THREE.DirectionalLight(0xe0e7ff, 2.0);
-moonLight.position.set(120, 180, -220);
-moonLight.castShadow = true;
-scene.add(moonLight);
+const sunLight = new THREE.DirectionalLight(0xfffbe1, 1.8);
+sunLight.position.set(150, 220, 100);
+sunLight.castShadow = true;
+scene.add(sunLight);
 
 // --- 2. Custom Island Map & Edge Exploration ---
 function getIslandRadius(angle) {
@@ -62,40 +62,91 @@ for (let i = 0; i < posAttr.count; i++) {
 }
 islandGeo.computeVertexNormals();
 
-const island = new THREE.Mesh(islandGeo, new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.85 }));
+const island = new THREE.Mesh(islandGeo, new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.8 }));
 island.receiveShadow = true;
 scene.add(island);
 
 // Sand Shoreline Border
 const sandRing = new THREE.Mesh(
   new THREE.RingGeometry(110, 160, 64).rotateX(-Math.PI / 2),
-  new THREE.MeshBasicMaterial({ color: 0xeab308, side: THREE.DoubleSide })
+  new THREE.MeshBasicMaterial({ color: 0xfde047, side: THREE.DoubleSide })
 );
 sandRing.position.y = -0.1;
 scene.add(sandRing);
 
-// --- 3. Nature Polish: Rocks & Butterflies ---
-// Boulder Props around shores & land
+// --- 3. Minecraft-Style Voxel Cherry Blossom Trees & Air Flow Petals ---
+function createBlockyCherryTree() {
+  const treeGroup = new THREE.Group();
+  const woodMat = new THREE.MeshStandardMaterial({ color: 0x582f0e, roughness: 0.9 });
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.5 }); // Bright Pink
+
+  // Voxel Trunk
+  for (let y = 0; y < 6; y++) {
+    const trunkBlock = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), woodMat);
+    trunkBlock.position.y = y * 1.2 + 0.6;
+    treeGroup.add(trunkBlock);
+  }
+
+  // Voxel Canopy
+  for (let x = -2; x <= 2; x++) {
+    for (let y = 4; y <= 7; y++) {
+      for (let z = -2; z <= 2; z++) {
+        if (Math.abs(x) === 2 && Math.abs(z) === 2 && y > 5) continue;
+        const leafBlock = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.15, 1.15), leafMat);
+        leafBlock.position.set(x * 1.15, y * 1.15 + 0.6, z * 1.15);
+        treeGroup.add(leafBlock);
+      }
+    }
+  }
+  return treeGroup;
+}
+
+for (let i = 0; i < 30; i++) {
+  const tree = createBlockyCherryTree();
+  const ang = Math.random() * Math.PI * 2;
+  const r = 25 + Math.random() * (getIslandRadius(ang) - 40);
+  tree.position.set(Math.cos(ang) * r, 0, Math.sin(ang) * r);
+  scene.add(tree);
+}
+
+// Floating Cherry Petals in Air Flow
+const cherryPetals = [];
+const petalGeo = new THREE.PlaneGeometry(0.3, 0.3);
+const petalMat = new THREE.MeshBasicMaterial({ color: 0xf472b6, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+
+for (let i = 0; i < 180; i++) {
+  const petal = new THREE.Mesh(petalGeo, petalMat);
+  const ang = Math.random() * Math.PI * 2;
+  const r = Math.random() * 130;
+  petal.position.set(Math.cos(ang) * r, Math.random() * 12 + 1, Math.sin(ang) * r);
+  petal.userData = {
+    speedY: Math.random() * 0.02 + 0.01,
+    driftX: Math.random() * 0.03 + 0.01,
+    rotSpeed: Math.random() * 0.05
+  };
+  scene.add(petal);
+  cherryPetals.push(petal);
+}
+
+// Rocks & Butterflies
 function createRock() {
   const rockGeo = new THREE.DodecahedronGeometry(Math.random() * 1.5 + 0.8, 1);
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9 });
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.9 });
   const rock = new THREE.Mesh(rockGeo, rockMat);
   rock.scale.set(1 + Math.random() * 0.5, 0.6 + Math.random() * 0.4, 1 + Math.random() * 0.5);
   return rock;
 }
 
-for (let i = 0; i < 45; i++) {
+for (let i = 0; i < 40; i++) {
   const rock = createRock();
   const ang = Math.random() * Math.PI * 2;
   const rad = 20 + Math.random() * (getIslandRadius(ang) - 10);
   rock.position.set(Math.cos(ang) * rad, 0.5, Math.sin(ang) * rad);
-  rock.rotation.set(Math.random(), Math.random(), Math.random());
   scene.add(rock);
 }
 
-// Butterflies
 const butterflies = [];
-const butterflyColors = [0xf43f5e, 0x3b82f6, 0xeab308, 0xa855f7];
+const butterflyColors = [0x38bdf8, 0xfacc15, 0xc084fc, 0xf43f5e];
 
 function createButterfly() {
   const group = new THREE.Group();
@@ -111,13 +162,12 @@ function createButterfly() {
   group.userData = {
     leftWing, rightWing,
     baseY: Math.random() * 4 + 1.2,
-    speed: Math.random() * 0.04 + 0.02,
     ang: Math.random() * Math.PI * 2
   };
   return group;
 }
 
-for (let i = 0; i < 35; i++) {
+for (let i = 0; i < 30; i++) {
   const b = createButterfly();
   const ang = Math.random() * Math.PI * 2;
   const r = Math.random() * 100;
@@ -126,43 +176,20 @@ for (let i = 0; i < 35; i++) {
   butterflies.push(b);
 }
 
-// --- 4. Celestial Moon & Sky Wormhole Portal ---
-function createMoonTexture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512; canvas.height = 512;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#d1d5db'; ctx.fillRect(0, 0, 512, 512);
-
-  for (let i = 0; i < 90; i++) {
-    const x = Math.random() * 512, y = Math.random() * 512, r = Math.random() * 35 + 5;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(75, 85, 99, 0.35)'; ctx.fill();
-    ctx.strokeStyle = 'rgba(55, 65, 81, 0.5)'; ctx.lineWidth = 2; ctx.stroke();
-  }
-  return new THREE.CanvasTexture(canvas);
-}
-
-const moonMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(22, 32, 32),
-  new THREE.MeshStandardMaterial({ map: createMoonTexture(), roughness: 0.9 })
-);
-moonMesh.position.set(140, 130, -220);
-scene.add(moonMesh);
-
-// Sky Wormhole Group
+// Sky Portal Spawn Hub
 const skyWormholeGroup = new THREE.Group();
 skyWormholeGroup.position.set(0, 45, 0);
 
 const wormholeCore = new THREE.Mesh(
   new THREE.SphereGeometry(4.5, 32, 32),
-  new THREE.MeshBasicMaterial({ color: 0xa855f7, wireframe: true })
+  new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true })
 );
 skyWormholeGroup.add(wormholeCore);
 
 for (let i = 1; i <= 4; i++) {
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(i * 2.8, 0.35, 16, 64),
-    new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x06b6d4 : 0xec4899, transparent: true, opacity: 0.8 })
+    new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x06b6d4 : 0xf472b6, transparent: true, opacity: 0.8 })
   );
   ring.rotation.x = Math.PI / 2 + (i * 0.2);
   skyWormholeGroup.add(ring);
@@ -177,7 +204,7 @@ const groundPortal = new THREE.Mesh(
 groundPortal.position.y = 0.1;
 scene.add(groundPortal);
 
-// --- 5. Name Tag Sprite ---
+// --- 4. Name Tag Sprite ---
 function createNameTagSprite(text) {
   const canvas = document.createElement('canvas');
   canvas.width = 256; canvas.height = 64;
@@ -193,7 +220,7 @@ function createNameTagSprite(text) {
   return sprite;
 }
 
-// --- 6. Blue Knight Character Builder (With Gun) ---
+// --- 5. Blue Knight Character Builder (With Gun & Walk Joint Pivots) ---
 function createKnightMesh(nameTagText) {
   const group = new THREE.Group();
   
@@ -202,22 +229,21 @@ function createKnightMesh(nameTagText) {
   const trimMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.2 });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.7 });
 
-  // Torso & Plated Chest
+  // Torso
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.15, 0.55), armorMat);
   torso.position.y = 1.15; group.add(torso);
   const chestTrim = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.3, 0.57), trimMat);
   chestTrim.position.y = 1.35; group.add(chestTrim);
 
-  // Helmet with Crest Wings
+  // Helmet
   const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), armorMat);
   helmet.position.y = 2.0; group.add(helmet);
   const visor = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.15, 0.62), darkMat);
   visor.position.set(0, 2.0, 0.02); group.add(visor);
-  
   const crest = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.45, 0.5), trimMat);
   crest.position.set(0, 2.4, -0.05); group.add(crest);
 
-  // Limbs with Shoulders
+  // Limbs with Walk Pivots
   const armLegGeo = new THREE.BoxGeometry(0.38, 1.0, 0.38);
   armLegGeo.translate(0, -0.5, 0);
 
@@ -246,16 +272,15 @@ function createKnightMesh(nameTagText) {
 
   group.userData = {
     leftLegPivot, rightLegPivot, leftArmPivot, rightArmPivot,
-    gunGroup, barrel, isMounted: false
+    gunGroup, barrel, isMounted: false, animTime: 0
   };
   return group;
 }
 
-// --- 7. Horse Steed Mesh ---
+// --- 6. Horse Steed Mesh ---
 function createHorseMesh() {
   const group = new THREE.Group();
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
-  const maneMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.9 });
 
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 2.6), bodyMat);
   body.position.y = 1.4; group.add(body);
@@ -266,7 +291,6 @@ function createHorseMesh() {
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 1.0), bodyMat);
   head.position.set(0, 2.7, -1.3); group.add(head);
 
-  // Legs
   const legGeo = new THREE.BoxGeometry(0.3, 1.2, 0.3);
   const legPositions = [[-0.4, 0.6, 0.9], [0.4, 0.6, 0.9], [-0.4, 0.6, -0.9], [0.4, 0.6, -0.9]];
   legPositions.forEach(p => {
@@ -279,7 +303,7 @@ function createHorseMesh() {
 
 let horseSteed = null;
 
-// --- 8. Bullets & Shooting Mechanics ---
+// --- 7. Bullets & Shooting Mechanics ---
 const activeBullets = [];
 
 function fireBullet(originPos, targetDirection) {
@@ -293,50 +317,54 @@ function fireBullet(originPos, targetDirection) {
   scene.add(bullet);
 }
 
-// --- 9. Alien NPCs & Boss ---
-function createAlienMesh() {
-  const alienGroup = new THREE.Group();
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.5 });
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+// --- 8. Henderman (Minecraft Enderman Style) NPCs & Boss ---
+function createHendermanMesh() {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.9 }); // Tall Dark Body
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xa855f7 }); // Purple Glowing Eyes
 
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.18, 1.1, 8), skinMat);
-  body.position.y = 1.0; alienGroup.add(body);
+  // Tall Skinny Torso & Head
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.8, 0.3), bodyMat);
+  body.position.y = 1.8; group.add(body);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 16), skinMat);
-  head.position.y = 1.85; alienGroup.add(head);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), bodyMat);
+  head.position.y = 2.95; group.add(head);
 
-  const eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), eyeMat);
-  eye1.position.set(-0.15, 1.95, 0.35); alienGroup.add(eye1);
-  const eye2 = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), eyeMat);
-  eye2.position.set(0.15, 1.95, 0.35); alienGroup.add(eye2);
+  // Purple Eyes
+  const eye1 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.06, 0.05), eyeMat);
+  eye1.position.set(-0.14, 2.95, 0.26); group.add(eye1);
+  const eye2 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.06, 0.05), eyeMat);
+  eye2.position.set(0.14, 2.95, 0.26); group.add(eye2);
 
-  const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.9); legGeo.translate(0, -0.45, 0);
-  const leftLegPivot = new THREE.Group(); leftLegPivot.position.set(-0.15, 0.9, 0);
-  leftLegPivot.add(new THREE.Mesh(legGeo, skinMat)); alienGroup.add(leftLegPivot);
-  const rightLegPivot = new THREE.Group(); rightLegPivot.position.set(0.15, 0.9, 0);
-  rightLegPivot.add(new THREE.Mesh(legGeo, skinMat)); alienGroup.add(rightLegPivot);
+  // Long Limbs
+  const legGeo = new THREE.BoxGeometry(0.15, 1.8, 0.15); legGeo.translate(0, -0.9, 0);
+  const leftLegPivot = new THREE.Group(); leftLegPivot.position.set(-0.15, 1.8, 0);
+  leftLegPivot.add(new THREE.Mesh(legGeo, bodyMat)); group.add(leftLegPivot);
 
-  alienGroup.userData = { leftLegPivot, rightLegPivot, timer: 0, hp: 3, lastAttackTime: 0 };
-  return alienGroup;
+  const rightLegPivot = new THREE.Group(); rightLegPivot.position.set(0.15, 1.8, 0);
+  rightLegPivot.add(new THREE.Mesh(legGeo, bodyMat)); group.add(rightLegPivot);
+
+  group.userData = { leftLegPivot, rightLegPivot, hp: 3, lastAttackTime: 0 };
+  return group;
 }
 
-const alienNPCs = [];
-function spawnAlien() {
-  const alien = createAlienMesh();
+const hendermenNPCs = [];
+function spawnHenderman() {
+  const henderman = createHendermanMesh();
   const ang = Math.random() * Math.PI * 2;
   const r = 20 + Math.random() * (getIslandRadius(ang) - 35);
-  alien.position.set(Math.cos(ang) * r, 0, Math.sin(ang) * r);
-  scene.add(alien);
-  alienNPCs.push({ mesh: alien, speed: 0.045 });
+  henderman.position.set(Math.cos(ang) * r, 0, Math.sin(ang) * r);
+  scene.add(henderman);
+  hendermenNPCs.push({ mesh: henderman, speed: 0.05 });
 }
 
-for (let i = 0; i < 18; i++) spawnAlien();
+for (let i = 0; i < 18; i++) spawnHenderman();
 
 // Fatty Jelly Boss
 let bossMesh = null;
 let bossHP = 500;
 let maxBossHP = 500;
-let totalAlienKills = 0;
+let totalHendermenKills = 0;
 
 function createFattyJellyBoss() {
   const group = new THREE.Group();
@@ -358,7 +386,6 @@ function createFattyJellyBoss() {
   }
 
   group.position.set(0, 0, -30);
-  group.userData = { timer: 0, lastAttackTime: 0 };
   return group;
 }
 
@@ -369,7 +396,7 @@ function spawnBossEvent() {
   document.getElementById('boss-hud').style.display = 'flex';
 }
 
-// --- 10. Local Player, Free 360 Camera & Controls ---
+// --- 9. Local Player, Free 360 Camera & Controls ---
 let localPlayer = null;
 let localUsername = "Knight";
 let localHealth = 100;
@@ -382,7 +409,7 @@ let yaw = 0;
 let pitch = 0.2;
 
 document.addEventListener('click', () => {
-  if (document.getElementById('name-portal').style.display === 'none') {
+  if (document.getElementById('name-portal').style.display === 'none' && document.activeElement !== chatInput) {
     renderer.domElement.requestPointerLock();
   }
 });
@@ -413,11 +440,31 @@ document.getElementById('join-btn').addEventListener('click', () => {
   socket.emit('joinGame', localUsername);
 });
 
-// Key Listeners
-const keys = {};
+// Chat Integration on Enter Key
+const chatInput = document.getElementById('chat-input');
+const chatMessages = document.getElementById('chat-messages');
+
 window.addEventListener('keydown', (e) => {
+  // Enter key opens/sends Chat
+  if (e.code === 'Enter') {
+    if (document.activeElement === chatInput) {
+      const msg = chatInput.value.trim();
+      if (msg !== "") {
+        appendChatMessage(`${localUsername}: ${msg}`);
+        chatInput.value = "";
+      }
+      chatInput.blur();
+      renderer.domElement.requestPointerLock();
+    } else {
+      document.exitPointerLock();
+      chatInput.focus();
+    }
+    return;
+  }
+
+  if (document.activeElement === chatInput) return;
+
   keys[e.code] = true;
-  if (document.activeElement === document.getElementById('chat-input')) return;
 
   // Jump Skill: Space
   if (e.code === 'Space' && !isJumping && localPlayer) {
@@ -438,8 +485,6 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyG' && localPlayer) {
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
-    
-    // Barrel Origin
     const startPos = localPlayer.position.clone().add(new THREE.Vector3(0, 1.4, 0));
     fireBullet(startPos, dir);
   }
@@ -464,7 +509,14 @@ window.addEventListener('keydown', (e) => {
 
 window.addEventListener('keyup', (e) => (keys[e.code] = false));
 
-// --- 11. Network Handlers ---
+function appendChatMessage(text) {
+  const div = document.createElement('div');
+  div.innerText = text;
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Network Handlers
 socket.on('currentPlayers', (players) => {
   Object.keys(players).forEach((id) => {
     if (id !== socket.id && !remotePlayers[id]) {
@@ -521,7 +573,7 @@ function updateHealthUI() {
   document.getElementById('health-text').innerText = `HP: ${localHealth} / 100`;
 }
 
-// --- 12. Minimap Rendering System ---
+// Minimap
 const minimapCanvas = document.getElementById('minimap-canvas');
 const mCtx = minimapCanvas.getContext('2d');
 
@@ -529,20 +581,15 @@ function updateMinimap() {
   mCtx.clearRect(0, 0, 150, 150);
   mCtx.fillStyle = '#0f172a'; mCtx.fillRect(0, 0, 150, 150);
 
-  // Draw Island Map outline
-  mCtx.fillStyle = '#15803d';
-  mCtx.beginPath();
-  mCtx.arc(75, 75, 60, 0, Math.PI * 2);
-  mCtx.fill();
+  mCtx.fillStyle = '#22c55e';
+  mCtx.beginPath(); mCtx.arc(75, 75, 60, 0, Math.PI * 2); mCtx.fill();
 
   if (!localPlayer) return;
-
-  // Scale factor from world to minimap
   const scale = 0.4;
 
-  // Draw Aliens (Red Dots)
-  mCtx.fillStyle = '#ef4444';
-  alienNPCs.forEach((npc) => {
+  // Hendermen (Purple Dots)
+  mCtx.fillStyle = '#a855f7';
+  hendermenNPCs.forEach((npc) => {
     const dx = 75 + (npc.mesh.position.x - localPlayer.position.x) * scale;
     const dy = 75 + (npc.mesh.position.z - localPlayer.position.z) * scale;
     if (dx >= 0 && dx <= 150 && dy >= 0 && dy <= 150) {
@@ -550,106 +597,88 @@ function updateMinimap() {
     }
   });
 
-  // Draw Boss (Purple Big Dot)
-  if (bossMesh) {
-    mCtx.fillStyle = '#ec4899';
-    const bx = 75 + (bossMesh.position.x - localPlayer.position.x) * scale;
-    const by = 75 + (bossMesh.position.z - localPlayer.position.z) * scale;
-    mCtx.beginPath(); mCtx.arc(bx, by, 7, 0, Math.PI * 2); mCtx.fill();
-  }
-
-  // Draw Local Player (Blue Dot)
+  // Local Player (Blue Dot)
   mCtx.fillStyle = '#38bdf8';
   mCtx.beginPath(); mCtx.arc(75, 75, 5, 0, Math.PI * 2); mCtx.fill();
 }
 
-// --- 13. Main Game Loop ---
-let walkTimer = 0;
+// --- 10. Main Game Loop ---
+const keys = {};
 const now = () => performance.now();
 
 function animate() {
   requestAnimationFrame(animate);
 
-  // Environment Rotations
+  // Environment Animations
   skyWormholeGroup.rotation.y += 0.03;
-  wormholeCore.rotation.z += 0.02;
-  moonMesh.rotation.y += 0.0015;
 
-  // Butterfly Flutter AI
+  // Cherry Blossom Air Flow Motion
+  cherryPetals.forEach(p => {
+    p.position.y -= p.userData.speedY;
+    p.position.x += p.userData.driftX;
+    p.rotation.z += p.userData.rotSpeed;
+    if (p.position.y < 0) {
+      p.position.y = 12;
+      p.position.x = (Math.random() - 0.5) * 200;
+    }
+  });
+
+  // Butterflies
   butterflies.forEach(b => {
     b.userData.ang += 0.03;
     b.position.y = b.userData.baseY + Math.sin(b.userData.ang * 2) * 0.4;
-    b.position.x += Math.cos(b.userData.ang) * 0.03;
-    b.position.z += Math.sin(b.userData.ang) * 0.03;
-
     const flap = Math.sin(b.userData.ang * 12) * 0.6;
     b.userData.leftWing.rotation.y = flap;
     b.userData.rightWing.rotation.y = -flap;
   });
 
-  // Active Bullet Motion & Hit Detection
+  // Bullets
   for (let i = activeBullets.length - 1; i >= 0; i--) {
     const b = activeBullets[i];
     b.mesh.position.add(b.vel);
     b.life--;
 
-    // Collision with Aliens
-    for (let j = alienNPCs.length - 1; j >= 0; j--) {
-      const alien = alienNPCs[j].mesh;
-      if (b.mesh.position.distanceTo(alien.position) < 1.8) {
-        alien.userData.hp -= 1;
-        alien.children[0].material.color.setHex(0xef4444);
-        setTimeout(() => alien.children[0].material.color.setHex(0x10b981), 150);
-
-        if (alien.userData.hp <= 0) {
-          scene.remove(alien);
-          alienNPCs.splice(j, 1);
-          totalAlienKills++;
-          document.getElementById('kill-counter').innerText = `Aliens Slain: ${totalAlienKills} / 100`;
-          if (totalAlienKills >= 100) spawnBossEvent();
-          setTimeout(spawnAlien, 2000);
+    for (let j = hendermenNPCs.length - 1; j >= 0; j--) {
+      const henderman = hendermenNPCs[j].mesh;
+      if (b.mesh.position.distanceTo(henderman.position) < 1.8) {
+        henderman.userData.hp -= 1;
+        if (henderman.userData.hp <= 0) {
+          scene.remove(henderman);
+          hendermenNPCs.splice(j, 1);
+          totalHendermenKills++;
+          document.getElementById('kill-counter').innerText = `Hendermen Slain: ${totalHendermenKills} / 100`;
+          if (totalHendermenKills >= 100) spawnBossEvent();
+          setTimeout(spawnHenderman, 2000);
         }
-
         scene.remove(b.mesh);
         activeBullets.splice(i, 1);
         break;
       }
     }
-
-    // Hit Boss
-    if (bossMesh && b.mesh.position.distanceTo(bossMesh.position) < 5) {
-      bossHP = Math.max(0, bossHP - 12);
-      document.getElementById('boss-hp-fill').style.width = `${(bossHP / maxBossHP) * 100}%`;
-      scene.remove(b.mesh);
-      activeBullets.splice(i, 1);
-    } else if (b.life <= 0) {
-      scene.remove(b.mesh);
-      activeBullets.splice(i, 1);
-    }
   }
 
-  // Alien NPCs AI Pursuit
-  alienNPCs.forEach((npc) => {
-    const alien = npc.mesh;
+  // Hendermen AI
+  hendermenNPCs.forEach((npc) => {
+    const hm = npc.mesh;
     if (localPlayer) {
-      const dist = alien.position.distanceTo(localPlayer.position);
+      const dist = hm.position.distanceTo(localPlayer.position);
       if (dist < 22) {
-        alien.lookAt(localPlayer.position.x, alien.position.y, localPlayer.position.z);
-        alien.translateZ(npc.speed);
-        if (dist <= 2.2 && now() - alien.userData.lastAttackTime > 1200) {
-          alien.userData.lastAttackTime = now();
+        hm.lookAt(localPlayer.position.x, hm.position.y, localPlayer.position.z);
+        hm.translateZ(npc.speed);
+        if (dist <= 2.2 && now() - hm.userData.lastAttackTime > 1200) {
+          hm.userData.lastAttackTime = now();
           socket.emit('playerDamage', 5);
         }
       }
     }
   });
 
-  // Local Player Movement & Physics
+  // Local Player Movement & Walking Animation
   if (localPlayer) {
     let isMoving = false;
     const speed = localPlayer.userData.isMounted ? 0.26 : 0.14;
 
-    if (document.activeElement !== document.getElementById('chat-input')) {
+    if (document.activeElement !== chatInput) {
       if (keys['ArrowLeft']) yaw += 0.03;
       if (keys['ArrowRight']) yaw -= 0.03;
       if (keys['ArrowUp']) pitch = Math.min(Math.PI / 2 - 0.05, pitch + 0.025);
@@ -662,7 +691,6 @@ function animate() {
       if (keys['KeyA']) { localPlayer.translateX(-speed); isMoving = true; }
       if (keys['KeyD']) { localPlayer.translateX(speed); isMoving = true; }
 
-      // Full edge exploration check
       if (!isInsideIsland(localPlayer.position.x, localPlayer.position.z)) {
         localPlayer.position.copy(prevPos);
       }
@@ -670,9 +698,21 @@ function animate() {
 
     localPlayer.rotation.y = yaw;
 
-    // Sky Drop Gravity & Jump Skill
-    const minY = localPlayer.userData.isMounted ? 1.2 : 0;
+    // Walking Limb Swing Animation Logic
+    if (isMoving && !localPlayer.userData.isMounted) {
+      localPlayer.userData.animTime += 0.18;
+      const swing = Math.sin(localPlayer.userData.animTime) * 0.65;
+      localPlayer.userData.leftLegPivot.rotation.x = swing;
+      localPlayer.userData.rightLegPivot.rotation.x = -swing;
+      localPlayer.userData.leftArmPivot.rotation.x = -swing;
+    } else {
+      localPlayer.userData.leftLegPivot.rotation.x = 0;
+      localPlayer.userData.rightLegPivot.rotation.x = 0;
+      localPlayer.userData.leftArmPivot.rotation.x = 0;
+    }
 
+    // Jump Gravity
+    const minY = localPlayer.userData.isMounted ? 1.2 : 0;
     if (localPlayer.position.y > minY && !isJumping) {
       localPlayer.position.y = Math.max(minY, localPlayer.position.y - 0.45);
     }
@@ -686,7 +726,6 @@ function animate() {
       }
     }
 
-    // Broadcast network position
     socket.emit('playerMovement', {
       x: localPlayer.position.x,
       y: localPlayer.position.y,
@@ -694,7 +733,7 @@ function animate() {
       rotation: localPlayer.rotation.y
     });
 
-    // Dynamic Camera (Aiming vs Free Orbit)
+    // Camera Target
     const camDist = isAiming ? 3.5 : 8;
     const camX = localPlayer.position.x + camDist * Math.sin(yaw) * Math.cos(pitch);
     const camY = localPlayer.position.y + camDist * Math.sin(pitch) + (isAiming ? 1.9 : 1.8);
