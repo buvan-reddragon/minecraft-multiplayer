@@ -1,4 +1,4 @@
-// client.js
+// client.js - Top-Down Tactical Maze Conquest
 const socket = io();
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
@@ -10,12 +10,12 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// --- 1. Maze Layout & Cell Constants ---
+// --- 1. Map & Violet Cell Coordinates ---
 const TILE_SIZE = 64;
 const MAP_COLS = 25;
 const MAP_ROWS = 25;
 
-// Violet Cell Center Coordinates
+// Exact center coordinates of the violet conquest cell
 const VIOLET_CELL_X = 11.5 * TILE_SIZE;
 const VIOLET_CELL_Y = 11.5 * TILE_SIZE;
 
@@ -54,7 +54,7 @@ function isWallTile(x, y) {
   return mazeMap[row][col] === 1;
 }
 
-// --- 2. Player State & Variables ---
+// --- 2. Local & Remote Player State ---
 let localPlayer = {
   id: null,
   x: 1.5 * TILE_SIZE,
@@ -64,7 +64,7 @@ let localPlayer = {
   radius: 18,
   hitCount: 0,
   isLocked: false,
-  lockTimer: 0,
+  lockTimer: 30,
   name: "Soldier",
   animFrame: 0,
   isMoving: false
@@ -74,15 +74,15 @@ const remotePlayers = {};
 const bullets = [];
 const mouse = { x: 0, y: 0 };
 const keys = {};
-let lockInterval = null;
+let lockCountdownInterval = null;
 
-// --- 3. Fixed Chat System & Input Listeners ---
+// --- 3. UI, Chat & Keyboard Inputs ---
 const chatInput = document.getElementById('chat-input');
 const chatMessages = document.getElementById('chat-messages');
 
 document.getElementById('join-btn').addEventListener('click', () => {
-  const val = document.getElementById('username-input').value.trim();
-  if (val) localPlayer.name = val;
+  const nameVal = document.getElementById('username-input').value.trim();
+  if (nameVal) localPlayer.name = nameVal;
   document.getElementById('name-portal').style.display = 'none';
   socket.emit('joinGame', localPlayer.name);
 });
@@ -132,41 +132,51 @@ socket.on('chatMessage', (data) => {
   appendChatMessage(data.name, data.msg);
 });
 
-// --- 4. Cell Lock System ---
+// --- 4. Auto Cell Teleportation & Auto-Respawn Timer ---
 document.getElementById('unlock-btn').addEventListener('click', unlockLocalPlayer);
 
 function lockLocalPlayerInCell() {
   localPlayer.isLocked = true;
+  
+  // Instant Smooth Teleportation to Cell Center
   localPlayer.x = VIOLET_CELL_X;
   localPlayer.y = VIOLET_CELL_Y;
   localPlayer.hitCount = 0;
   localPlayer.lockTimer = 30;
 
-  document.getElementById('hits-counter').innerText = `Status: LOCKED IN CELL (0 / 10 Hits)`;
+  document.getElementById('hits-counter').innerText = `STATUS: LOCKED IN VIOLET CELL!`;
   const overlay = document.getElementById('cell-overlay');
   overlay.style.display = 'flex';
+  document.getElementById('timer-text').innerText = `Auto-Respawn in: 30s`;
 
-  if (lockInterval) clearInterval(lockInterval);
-  lockInterval = setInterval(() => {
+  if (lockCountdownInterval) clearInterval(lockCountdownInterval);
+  
+  // Auto-Respawn Countdown
+  lockCountdownInterval = setInterval(() => {
     localPlayer.lockTimer--;
-    document.getElementById('timer-text').innerText = `Unlocking in: ${localPlayer.lockTimer}s`;
+    document.getElementById('timer-text').innerText = `Auto-Respawn in: ${localPlayer.lockTimer}s`;
+
     if (localPlayer.lockTimer <= 0) {
       unlockLocalPlayer();
     }
   }, 1000);
 
+  // Notify server of lock status
   socket.emit('playerLocked', { targetId: socket.id });
 }
 
 function unlockLocalPlayer() {
   localPlayer.isLocked = false;
+  localPlayer.hitCount = 0;
+  
   document.getElementById('cell-overlay').style.display = 'none';
-  document.getElementById('hits-counter').innerText = `Opponent Hits Remaining to Cell Lock: 10`;
-  if (lockInterval) clearInterval(lockInterval);
+  document.getElementById('hits-counter').innerText = `Hits Remaining to Cell Lock: 10`;
+  
+  if (lockCountdownInterval) clearInterval(lockCountdownInterval);
   socket.emit('playerUnlocked', { targetId: socket.id });
 }
 
-// --- 5. Shooting Mechanics ---
+// --- 5. Yellow Laser Bullets ---
 function shootBullet() {
   const centerScreenX = canvas.width / 2;
   const centerScreenY = canvas.height / 2;
@@ -175,8 +185,8 @@ function shootBullet() {
   const bullet = {
     x: localPlayer.x + Math.cos(angle) * 22,
     y: localPlayer.y + Math.sin(angle) * 22,
-    vx: Math.cos(angle) * 11,
-    vy: Math.sin(angle) * 11,
+    vx: Math.cos(angle) * 12,
+    vy: Math.sin(angle) * 12,
     ownerId: socket.id
   };
 
@@ -184,7 +194,7 @@ function shootBullet() {
   socket.emit('fireBullet', bullet);
 }
 
-// --- 6. Network Listeners ---
+// --- 6. Socket Network Handlers ---
 socket.on('currentPlayers', (players) => {
   Object.keys(players).forEach(id => {
     if (id !== socket.id) remotePlayers[id] = players[id];
@@ -211,7 +221,7 @@ socket.on('bulletFired', (bulletData) => {
   bullets.push(bulletData);
 });
 
-// --- 7. Top-Down Tactical Soldier Renderer ---
+// --- 7. Top-Down Soldier Renderer ---
 function drawSoldier(x, y, angle, vestColor, helmetColor, name, isMoving, animFrame, camX, camY) {
   const screenX = x - camX + canvas.width / 2;
   const screenY = y - camY + canvas.height / 2;
@@ -220,57 +230,55 @@ function drawSoldier(x, y, angle, vestColor, helmetColor, name, isMoving, animFr
   ctx.translate(screenX, screenY);
   ctx.rotate(angle);
 
-  // 1. Moving Boots / Legs
+  // Boots Walking Animation
   const legOffset = isMoving ? Math.sin(animFrame * 0.25) * 8 : 0;
-
   ctx.fillStyle = '#1e293b';
-  ctx.fillRect(-12 + legOffset, -16, 8, 10); // Left Boot
-  ctx.fillRect(-12 - legOffset, 6, 8, 10);  // Right Boot
+  ctx.fillRect(-12 + legOffset, -16, 8, 10);
+  ctx.fillRect(-12 - legOffset, 6, 8, 10);
 
-  // 2. Tactical Vest & Body
+  // Tactical Vest
   ctx.fillStyle = vestColor;
   ctx.beginPath();
   ctx.arc(0, 0, 16, 0, Math.PI * 2);
   ctx.fill();
 
-  // 3. Armor Shoulders
+  // Armor Pads
   ctx.fillStyle = '#334155';
   ctx.fillRect(-6, -18, 12, 6);
   ctx.fillRect(-6, 12, 12, 6);
 
-  // 4. Soldier Helmet
+  // Helmet
   ctx.fillStyle = helmetColor;
   ctx.beginPath();
   ctx.arc(0, 0, 10, 0, Math.PI * 2);
   ctx.fill();
 
-  // Helmet Dark Visor Line
+  // Visor
   ctx.fillStyle = '#0f172a';
   ctx.fillRect(2, -5, 4, 10);
 
-  // 5. Hands holding Assault Rifle
-  ctx.fillStyle = '#f87171'; // Hand Skin Tone
+  // Hands & Assault Rifle
+  ctx.fillStyle = '#f87171';
   ctx.beginPath();
   ctx.arc(12, -8, 4, 0, Math.PI * 2);
   ctx.arc(18, 2, 4, 0, Math.PI * 2);
   ctx.fill();
 
-  // 6. Assault Rifle Barrel & Suppressor
   ctx.fillStyle = '#0f172a';
-  ctx.fillRect(8, -2, 18, 5); // Main Gun Body
+  ctx.fillRect(8, -2, 18, 5);
   ctx.fillStyle = '#64748b';
-  ctx.fillRect(26, -1, 6, 3);  // Rifle Barrel Tip
+  ctx.fillRect(26, -1, 6, 3);
 
   ctx.restore();
 
-  // Name Tag
+  // Player Name Tag
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(name, screenX, screenY - 26);
 }
 
-// --- 8. Maze & Map Renderer ---
+// --- 8. Maze World Renderer ---
 function drawMaze(camX, camY) {
   const startCol = Math.max(0, Math.floor((camX - canvas.width / 2) / TILE_SIZE));
   const endCol = Math.min(MAP_COLS, Math.ceil((camX + canvas.width / 2) / TILE_SIZE));
@@ -284,21 +292,21 @@ function drawMaze(camX, camY) {
       const screenY = r * TILE_SIZE - camY + canvas.height / 2;
 
       if (tile === 1) {
-        // Wall
+        // Walls
         ctx.fillStyle = '#1e293b';
         ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
         ctx.strokeStyle = '#334155';
         ctx.lineWidth = 2;
         ctx.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
       } else if (tile === 2) {
-        // Central Violet Cell Box Area
-        ctx.fillStyle = 'rgba(124, 58, 237, 0.35)';
+        // Central Violet Conquest Cell Box
+        ctx.fillStyle = 'rgba(124, 58, 237, 0.4)';
         ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
         ctx.strokeStyle = '#a855f7';
         ctx.lineWidth = 2;
         ctx.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
       } else {
-        // Normal Corridor Floor
+        // Floor Corridors
         ctx.fillStyle = '#090d16';
         ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
         ctx.strokeStyle = '#0f172a';
@@ -309,11 +317,11 @@ function drawMaze(camX, camY) {
   }
 }
 
-// --- 9. Game Loop ---
+// --- 9. Core Game Loop ---
 function update() {
   if (document.getElementById('name-portal').style.display !== 'none') return;
 
-  // Prevent moving out of central cell if locked
+  // Lock Check: Lock movement if imprisoned inside cell
   if (!localPlayer.isLocked) {
     let dx = 0;
     let dy = 0;
@@ -344,7 +352,7 @@ function update() {
     localPlayer.isMoving = false;
   }
 
-  // Aim Rotation
+  // Aim Direction
   const centerScreenX = canvas.width / 2;
   const centerScreenY = canvas.height / 2;
   localPlayer.angle = Math.atan2(mouse.y - centerScreenY, mouse.x - centerScreenX);
@@ -356,25 +364,27 @@ function update() {
     rotation: localPlayer.angle
   });
 
-  // Bullets Collision
+  // Bullets Movement & Hits Logic
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
     b.x += b.vx;
     b.y += b.vy;
 
+    // Remove bullets colliding with maze walls
     if (isWallTile(b.x, b.y)) {
       bullets.splice(i, 1);
       continue;
     }
 
-    // Check hit on local player
+    // Check hit on local player (when not already locked)
     if (b.ownerId !== socket.id && !localPlayer.isLocked) {
       const dist = Math.hypot(b.x - localPlayer.x, b.y - localPlayer.y);
       if (dist < localPlayer.radius) {
         localPlayer.hitCount++;
         const remaining = 10 - localPlayer.hitCount;
-        document.getElementById('hits-counter').innerText = `Opponent Hits Remaining to Cell Lock: ${remaining}`;
+        document.getElementById('hits-counter').innerText = `Hits Remaining to Cell Lock: ${remaining}`;
 
+        // 10 Hits Trigger -> Auto Teleport to Violet Cell
         if (localPlayer.hitCount >= 10) {
           lockLocalPlayerInCell();
         }
@@ -392,22 +402,27 @@ function render() {
 
   drawMaze(camX, camY);
 
-  // Draw Bullets
-  ctx.fillStyle = '#f43f5e';
+  // Render Bright Yellow Laser Bullets
   bullets.forEach(b => {
     const screenX = b.x - camX + canvas.width / 2;
     const screenY = b.y - camY + canvas.height / 2;
+
+    ctx.save();
+    ctx.shadowColor = '#fef08a';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#facc15';
     ctx.beginPath();
-    ctx.arc(screenX, screenY, 4, 0, Math.PI * 2);
+    ctx.arc(screenX, screenY, 5, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
   });
 
-  // Draw Remote Opponents (Pink Vest Soldiers)
+  // Render Remote Players (Pink Soldiers)
   Object.values(remotePlayers).forEach(p => {
     drawSoldier(p.x, p.y, p.angle || 0, '#ec4899', '#9d174d', p.name || 'Opponent', false, 0, camX, camY);
   });
 
-  // Draw Local Player (Blue Vest Soldier)
+  // Render Local Player (Blue Soldier)
   drawSoldier(
     localPlayer.x, localPlayer.y, localPlayer.angle,
     '#2563eb', '#1d4ed8', localPlayer.name,
