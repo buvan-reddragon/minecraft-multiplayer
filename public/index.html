@@ -3,18 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Arcadia Maze - 2D Top-Down Multiplayer GTA Style</title>
+  <title>Arcadia Maze - Top-Down Soldier Conquest</title>
   <style>
     * { box-sizing: border-box; user-select: none; }
     body, html {
       margin: 0; padding: 0; width: 100%; height: 100%;
-      overflow: hidden; background-color: #0f172a;
+      overflow: hidden; background-color: #020617;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
-    #game-canvas {
-      display: block; width: 100vw; height: 100vh; background: #020617;
-    }
+    #game-canvas { display: block; width: 100vw; height: 100vh; }
 
     #name-portal {
       position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -30,49 +28,46 @@
       padding: 12px 32px; font-size: 18px; background: #f59e0b; color: #0f172a;
       border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s;
     }
-    #name-portal button:hover { background: #d97706; }
 
-    /* HUD Elements */
+    /* Cell Lock Overlay */
+    #cell-overlay {
+      position: absolute; top: 20px; right: 20px; background: rgba(124, 58, 237, 0.9);
+      border: 2px solid #a855f7; border-radius: 8px; padding: 14px 20px; color: white;
+      display: none; flex-direction: column; align-items: center; gap: 8px; z-index: 150;
+      box-shadow: 0 0 20px rgba(168, 85, 247, 0.6);
+    }
+    #unlock-btn {
+      padding: 8px 16px; background: #ef4444; border: none; border-radius: 6px;
+      color: white; font-weight: bold; cursor: pointer; font-size: 14px;
+    }
+    #unlock-btn:hover { background: #dc2626; }
+
+    /* HUD */
     #hud {
       position: absolute; top: 20px; left: 20px; z-index: 100;
       display: flex; flex-direction: column; gap: 8px;
     }
-    #health-bar-container {
-      width: 240px; height: 24px; background: rgba(15, 23, 42, 0.85);
-      border: 2px solid #f59e0b; border-radius: 6px; overflow: hidden; position: relative;
-    }
-    #health-bar-fill {
-      width: 100%; height: 100%; background: #22c55e; transition: width 0.2s;
-    }
-    #health-text {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      display: flex; align-items: center; justify-content: center;
-      color: white; font-size: 13px; font-weight: bold; text-shadow: 1px 1px 2px black;
-    }
-    #kill-counter {
+    #hits-counter {
       color: #38bdf8; font-size: 14px; font-weight: bold;
-      background: rgba(0, 0, 0, 0.75); padding: 6px 12px; border-radius: 6px;
+      background: rgba(0, 0, 0, 0.8); padding: 8px 14px; border-radius: 6px;
       border: 1px solid rgba(56, 189, 248, 0.4); width: max-content;
     }
 
-    /* Controls Instructions Overlay */
     #instructions {
       position: absolute; bottom: 20px; right: 20px; color: #f59e0b;
-      font-size: 12px; background: rgba(0, 0, 0, 0.75); padding: 10px 14px;
+      font-size: 12px; background: rgba(0, 0, 0, 0.85); padding: 10px 14px;
       border-radius: 6px; pointer-events: none; border: 1px solid rgba(245, 158, 11, 0.3);
       line-height: 1.6; z-index: 100;
     }
 
     /* Chat UI */
     #chat-container {
-      position: absolute; bottom: 20px; left: 20px; width: 300px;
-      background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(245, 158, 11, 0.6);
+      position: absolute; bottom: 20px; left: 20px; width: 320px;
+      background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(245, 158, 11, 0.6);
       border-radius: 8px; padding: 10px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
       z-index: 100; backdrop-filter: blur(4px);
     }
-    #chat-header {
-      color: #f59e0b; font-size: 13px; font-weight: bold; margin-bottom: 6px;
-    }
+    #chat-header { color: #f59e0b; font-size: 13px; font-weight: bold; margin-bottom: 6px; }
     #chat-messages {
       height: 110px; overflow-y: auto; color: #e2e8f0; font-size: 12px;
       margin-bottom: 8px; display: flex; flex-direction: column; gap: 4px;
@@ -87,33 +82,35 @@
 
   <div id="name-portal">
     <h1>Arcadia Maze Conquest</h1>
-    <p style="color: #94a3b8; margin-bottom: 20px;">GTA 1 Style Top-Down 2D Multiplayer</p>
-    <input type="text" id="username-input" placeholder="Knight Name" maxlength="14" />
-    <button id="join-btn">ENTER MAZE</button>
+    <p style="color: #94a3b8; margin-bottom: 20px;">Top-Down Soldier Tactical Warfare</p>
+    <input type="text" id="username-input" placeholder="Soldier Name" maxlength="14" />
+    <button id="join-btn">ENTER BATTLE</button>
+  </div>
+
+  <div id="cell-overlay">
+    <div style="font-weight: bold; font-size: 16px;">⚠️ CELL LOCKED IN VIOLET ZONE!</div>
+    <div id="timer-text">Unlocking in: 30s</div>
+    <button id="unlock-btn">UNLOCK NOW</button>
   </div>
 
   <div id="hud">
-    <div id="health-bar-container">
-      <div id="health-bar-fill"></div>
-      <div id="health-text">HP: 100 / 100</div>
-    </div>
-    <div id="kill-counter">Opponents Defeated: 0</div>
+    <div id="hits-counter">Opponent Hits Remaining to Cell Lock: 10</div>
   </div>
 
   <div id="instructions">
-    🎯 <b>Top-Down Controls:</b><br>
-    • Move Player: <b>W A S D</b><br>
-    • Aim Direction: <b>Mouse Cursor</b><br>
-    • Shoot Bullet: <b>Left Mouse Click</b><br>
-    • Open/Send Chat: <b>Enter Key</b>
+    🪖 <b>Soldier Controls:</b><br>
+    • Move Soldier: <b>W A S D</b><br>
+    • Aim Rifle: <b>Mouse Cursor</b><br>
+    • Fire Gun: <b>Left Mouse Click</b><br>
+    • Chat Window: <b>Enter Key</b>
   </div>
 
   <div id="chat-container">
-    <div id="chat-header">MAZE CHAT</div>
+    <div id="chat-header">COMMUNICATION RADAR</div>
     <div id="chat-messages">
-      <div style="color: #94a3b8; font-style: italic;">Press Enter to chat with opponents!</div>
+      <div style="color: #94a3b8; font-style: italic;">Press Enter to type chat messages...</div>
     </div>
-    <input type="text" id="chat-input" placeholder="Press Enter to type..." autocomplete="off" />
+    <input type="text" id="chat-input" placeholder="Press Enter to chat..." autocomplete="off" />
   </div>
 
   <canvas id="game-canvas"></canvas>

@@ -1,61 +1,68 @@
- // server.js
+// server.js
 const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const path = require('path');
-
 const app = express();
-const server = http.createServer(app);
+const http = require('http').createServer(app);
+const io = require('socket.io')(http);
 
-const io = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] }
-});
-
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static('public'));
 
 const players = {};
 
 io.on('connection', (socket) => {
-  socket.on('joinGame', (username) => {
-    players[socket.id] = {
-      id: socket.id,
-      name: username || `Knight_${socket.id.substring(0, 4)}`,
-      x: (Math.random() - 0.5) * 6,
-      y: 45, // Spawn high up in middle of Sky Wormhole
-      z: (Math.random() - 0.5) * 6,
-      rotation: 0,
-      health: 100
-    };
+  console.log('Player connected:', socket.id);
 
-    socket.emit('currentPlayers', players);
-    socket.broadcast.emit('newPlayer', players[socket.id]);
+  players[socket.id] = {
+    id: socket.id,
+    x: 96,
+    y: 96,
+    rotation: 0,
+    name: 'Soldier',
+    isLocked: false
+  };
+
+  socket.emit('currentPlayers', players);
+  socket.broadcast.emit('newPlayer', players[socket.id]);
+
+  socket.on('joinGame', (name) => {
+    if (players[socket.id]) {
+      players[socket.id].name = name;
+      io.emit('currentPlayers', players);
+    }
   });
 
-  socket.on('playerMovement', (data) => {
+  socket.on('playerMovement', (movementData) => {
     if (players[socket.id]) {
-      Object.assign(players[socket.id], data);
+      players[socket.id].x = movementData.x;
+      players[socket.id].y = movementData.y;
+      players[socket.id].rotation = movementData.rotation;
       socket.broadcast.emit('playerMoved', players[socket.id]);
     }
   });
 
-  socket.on('playerDamage', (amount) => {
-    if (players[socket.id]) {
-      players[socket.id].health = Math.max(0, players[socket.id].health - amount);
-      if (players[socket.id].health <= 0) {
-        players[socket.id].health = 100;
-        players[socket.id].x = (Math.random() - 0.5) * 6;
-        players[socket.id].y = 45; // Respawn falling from Sky Wormhole
-        players[socket.id].z = (Math.random() - 0.5) * 6;
-        io.emit('playerRespawned', players[socket.id]);
-      } else {
-        socket.emit('healthUpdate', { id: socket.id, health: players[socket.id].health });
-      }
-    }
+  socket.on('fireBullet', (bulletData) => {
+    socket.broadcast.emit('bulletFired', bulletData);
   });
 
-  socket.on('chatMessage', (data) => {
-    const senderName = players[socket.id] ? players[socket.id].name : 'Knight';
-    io.emit('receiveMessage', { sender: senderName, text: data.text });
+  // Cell Lock Sync Event
+  socket.on('playerLocked', (data) => {
+    if (players[data.targetId]) {
+      players[data.targetId].isLocked = true;
+    }
+    io.emit('playerLocked', data);
+  });
+
+  // Cell Unlock Sync Event
+  socket.on('playerUnlocked', (data) => {
+    if (players[data.targetId]) {
+      players[data.targetId].isLocked = false;
+    }
+    io.emit('playerUnlocked', data);
+  });
+
+  // Fixed Chat Broadcast Event
+  socket.on('chatMessage', (msg) => {
+    const senderName = players[socket.id] ? players[socket.id].name : 'Soldier';
+    io.emit('chatMessage', { name: senderName, msg: msg });
   });
 
   socket.on('disconnect', () => {
@@ -65,4 +72,6 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+http.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
