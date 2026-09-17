@@ -1,311 +1,755 @@
-// ==UserScript==
-// @name         Teletype Auto Red-Button Refresh & Task Tracker (Matrix IDE + Calendar)
-// @namespace    http://tampermonkey.net/
-// @version      2.8
-// @description  Matrix IDE theme, calendar date picker, draggable widget, arcade alerts, Enter-key tracking with modal detection.
-// @match        https://exela.teletype.team/*
-// @grant        GM_setValue
-// @grant        GM_getValue
-// ==/UserScript==
+// ============================================================
+// ARCADIA MAZE CONQUEST - MULTIPLAYER SERVER
+// Node.js + Express + Socket.IO
+// ============================================================
 
-(function() {
-    'use strict';
+const express = require("express");
+const http = require("http");
+const path = require("path");
+const { Server } = require("socket.io");
 
-    // --- REFRESH TIMING CONFIGURATION (IN SECONDS) ---
-    const MIN_REFRESH_SEC = 10;
-    const MAX_REFRESH_SEC = 18;
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
-    let isFormActive = false;
-    let refreshTimeout = null;
-    let lastActionTime = 0; // Debounce timer
+// ------------------------------------------------------------
+// STATIC FILES
+// ------------------------------------------------------------
 
-    // --- RETRO ARCADE SOUND EFFECT (8-Bit Chime) ---
-    function playArcadeSound() {
-        try {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+app.use(express.static(path.join(__dirname, "public")));
 
-            notes.forEach((freq, index) => {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(freq, audioCtx.currentTime + (index * 0.08));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
-                gain.gain.setValueAtTime(0.15, audioCtx.currentTime + (index * 0.08));
-                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + (index * 0.08) + 0.12);
+// ------------------------------------------------------------
+// GAME CONSTANTS
+// ------------------------------------------------------------
 
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
+const PORT = process.env.PORT || 3000;
 
-                osc.start(audioCtx.currentTime + (index * 0.08));
-                osc.stop(audioCtx.currentTime + (index * 0.08) + 0.12);
-            });
-        } catch (e) {
-            console.log("Arcade audio error: ", e);
-        }
+const TILE_SIZE = 64;
+const MAP_COLS = 25;
+const MAP_ROWS = 25;
+
+const PLAYER_RADIUS = 18;
+
+const MAX_HEALTH = 100;
+const MAX_ARMOR = 25;
+
+const BULLET_DAMAGE = 25;
+const FIRE_COOLDOWN = 120;
+
+const MAGAZINE_SIZE = 30;
+const RELOAD_TIME = 1500;
+
+const LOCK_HITS = 10;
+const LOCK_TIME = 30000;
+
+const PLAYER_SPEED = 3.5;
+const SPRINT_SPEED = 5.2;
+
+// ------------------------------------------------------------
+// MAZE
+// 1 = wall
+// 0 = floor
+// 2 = violet cell
+// ------------------------------------------------------------
+
+const mazeMap = [
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+  [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
+  [1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1],
+  [1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1],
+  [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,1],
+  [1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1],
+  [1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1],
+  [1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1],
+  [1,0,1,0,0,0,0,0,1,2,2,2,2,2,1,0,0,0,0,0,0,0,1,0,1],
+  [1,0,1,1,1,0,1,0,1,2,2,2,2,2,1,0,1,0,1,1,1,0,1,0,1],
+  [1,0,0,0,1,0,1,0,1,2,2,2,2,2,1,0,1,0,1,0,0,0,0,0,1],
+  [1,1,1,0,1,0,1,0,1,2,2,2,2,2,1,0,1,0,1,0,1,1,1,1,1],
+  [1,0,0,0,1,0,1,0,1,2,2,2,2,2,1,0,1,0,1,0,0,0,0,0,1],
+  [1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+  [1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1],
+  [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+  [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
+  [1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1],
+  [1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1],
+  [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,1],
+  [1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1],
+  [1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
+
+// ------------------------------------------------------------
+// PLAYER SPAWN POINTS
+// ------------------------------------------------------------
+
+const spawnPoints = [
+  { x: 1.5 * TILE_SIZE, y: 1.5 * TILE_SIZE },
+  { x: 23.5 * TILE_SIZE, y: 1.5 * TILE_SIZE },
+  { x: 1.5 * TILE_SIZE, y: 23.5 * TILE_SIZE },
+  { x: 23.5 * TILE_SIZE, y: 23.5 * TILE_SIZE },
+  { x: 5.5 * TILE_SIZE, y: 5.5 * TILE_SIZE },
+  { x: 19.5 * TILE_SIZE, y: 5.5 * TILE_SIZE },
+  { x: 5.5 * TILE_SIZE, y: 19.5 * TILE_SIZE },
+  { x: 19.5 * TILE_SIZE, y: 19.5 * TILE_SIZE }
+];
+
+// ------------------------------------------------------------
+// GAME STATE
+// ------------------------------------------------------------
+
+const players = {};
+
+let spawnIndex = 0;
+
+// ------------------------------------------------------------
+// HELPERS
+// ------------------------------------------------------------
+
+function getSpawnPoint() {
+  const spawn = spawnPoints[spawnIndex % spawnPoints.length];
+  spawnIndex++;
+
+  return {
+    x: spawn.x,
+    y: spawn.y
+  };
+}
+
+function isWallTile(x, y) {
+  const col = Math.floor(x / TILE_SIZE);
+  const row = Math.floor(y / TILE_SIZE);
+
+  if (
+    col < 0 ||
+    col >= MAP_COLS ||
+    row < 0 ||
+    row >= MAP_ROWS
+  ) {
+    return true;
+  }
+
+  return mazeMap[row][col] === 1;
+}
+
+function isValidPosition(x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return false;
+  }
+
+  if (isWallTile(x - PLAYER_RADIUS, y)) return false;
+  if (isWallTile(x + PLAYER_RADIUS, y)) return false;
+  if (isWallTile(x, y - PLAYER_RADIUS)) return false;
+  if (isWallTile(x, y + PLAYER_RADIUS)) return false;
+
+  return true;
+}
+
+function sanitizeName(name) {
+  if (typeof name !== "string") {
+    return "Soldier";
+  }
+
+  return name
+    .replace(/[<>]/g, "")
+    .trim()
+    .substring(0, 14) || "Soldier";
+}
+
+function publicPlayer(player) {
+  return {
+    id: player.id,
+    x: player.x,
+    y: player.y,
+    rotation: player.rotation,
+    name: player.name,
+    health: player.health,
+    armor: player.armor,
+    kills: player.kills,
+    deaths: player.deaths,
+    ammo: player.ammo,
+    isReloading: player.isReloading,
+    isLocked: player.isLocked,
+    isSprinting: player.isSprinting
+  };
+}
+
+function broadcastPlayers() {
+  io.emit(
+    "playersState",
+    Object.values(players).map(publicPlayer)
+  );
+}
+
+// ------------------------------------------------------------
+// PLAYER CREATION
+// ------------------------------------------------------------
+
+function createPlayer(socket) {
+  const spawn = getSpawnPoint();
+
+  players[socket.id] = {
+    id: socket.id,
+
+    x: spawn.x,
+    y: spawn.y,
+
+    rotation: 0,
+
+    name: "Soldier",
+
+    health: MAX_HEALTH,
+    armor: MAX_ARMOR,
+
+    kills: 0,
+    deaths: 0,
+
+    ammo: MAGAZINE_SIZE,
+
+    isReloading: false,
+    reloadTimer: null,
+
+    isLocked: false,
+    lockTimer: null,
+
+    lockHits: 0,
+
+    isSprinting: false,
+
+    lastShot: 0,
+
+    respawnTimer: null
+  };
+}
+
+// ------------------------------------------------------------
+// CONNECTION
+// ------------------------------------------------------------
+
+io.on("connection", (socket) => {
+
+  console.log("Player connected:", socket.id);
+
+  createPlayer(socket);
+
+  socket.emit("initialState", {
+    player: publicPlayer(players[socket.id]),
+    players: Object.values(players).map(publicPlayer)
+  });
+
+  socket.broadcast.emit(
+    "playerJoined",
+    publicPlayer(players[socket.id])
+  );
+
+  // ----------------------------------------------------------
+  // JOIN GAME
+  // ----------------------------------------------------------
+
+  socket.on("joinGame", (name) => {
+
+    const player = players[socket.id];
+
+    if (!player) return;
+
+    player.name = sanitizeName(name);
+
+    socket.emit("joinAccepted", publicPlayer(player));
+
+    broadcastPlayers();
+  });
+
+  // ----------------------------------------------------------
+  // PLAYER MOVEMENT
+  // ----------------------------------------------------------
+
+  socket.on("playerMovement", (data) => {
+
+    const player = players[socket.id];
+
+    if (!player) return;
+
+    if (player.isLocked) return;
+
+    if (player.health <= 0) return;
+
+    if (!data) return;
+
+    const x = Number(data.x);
+    const y = Number(data.y);
+    const rotation = Number(data.rotation);
+
+    if (
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      !Number.isFinite(rotation)
+    ) {
+      return;
     }
 
-    // --- DATA & STATS STORAGE ENGINE ---
-    const getTodayKey = () => new Date().toISOString().split('T')[0];
-    const today = getTodayKey();
-    let selectedDate = today;
+    // Prevent impossible teleports.
+    const distance = Math.hypot(
+      x - player.x,
+      y - player.y
+    );
 
-    function getStatsForDate(dateStr) {
-        const history = GM_getValue("daily_history", {});
-        return history[dateStr] || { accepted: 0, rejected: 0 };
+    const maxDistance = player.isSprinting
+      ? SPRINT_SPEED * 4
+      : PLAYER_SPEED * 4;
+
+    if (distance > maxDistance) {
+      return;
     }
 
-    function saveStatsForDate(dateStr, accepted, rejected) {
-        const history = GM_getValue("daily_history", {});
-        history[dateStr] = { accepted, rejected };
-        GM_setValue("daily_history", history);
+    if (!isValidPosition(x, y)) {
+      return;
     }
 
-    let todayStats = getStatsForDate(today);
-    let todayAccepted = todayStats.accepted;
-    let todayRejected = todayStats.rejected;
-    let totalAccepted = GM_getValue("total_accepted", 0);
-    let totalRejected = GM_getValue("total_rejected", 0);
+    player.x = x;
+    player.y = y;
 
-    // --- UI DASHBOARD WIDGET (IDE MATRIX THEME + CALENDAR) ---
-    function createWidget() {
-        if (document.getElementById('teletype-stats-widget')) return;
-        const div = document.createElement('div');
-        div.id = 'teletype-stats-widget';
-        div.style.position = 'fixed';
+    player.rotation = rotation;
 
-        // Load saved screen position or default to bottom-right
-        const savedPos = GM_getValue("widget_pos", { bottom: "20px", right: "20px" });
-        if (savedPos.top !== undefined) div.style.top = savedPos.top;
-        if (savedPos.left !== undefined) div.style.left = savedPos.left;
-        if (savedPos.bottom !== undefined) div.style.bottom = savedPos.bottom;
-        if (savedPos.right !== undefined) div.style.right = savedPos.right;
+    socket.broadcast.emit(
+      "playerMoved",
+      publicPlayer(player)
+    );
+  });
 
-        div.style.zIndex = '999999';
-        div.style.backgroundColor = '#000000';
-        div.style.color = '#00ff00';
-        div.style.padding = '12px 16px';
-        div.style.borderRadius = '2px';
-        div.style.border = '2px solid #00ff00';
-        div.style.boxShadow = 'none';
-        div.style.fontFamily = '"Consolas", "Courier New", monospace';
-        div.style.fontSize = '12px';
-        div.style.lineHeight = '1.6';
-        div.style.cursor = 'move';
-        div.style.userSelect = 'none';
+  // ----------------------------------------------------------
+  // SPRINT
+  // ----------------------------------------------------------
 
-        updateWidgetContent(div);
-        (document.body || document.documentElement).appendChild(div);
+  socket.on("sprintState", (sprinting) => {
 
-        makeDraggable(div);
+    const player = players[socket.id];
+
+    if (!player) return;
+
+    player.isSprinting = Boolean(sprinting);
+
+    socket.broadcast.emit("playerSprint", {
+      id: player.id,
+      sprinting: player.isSprinting
+    });
+  });
+
+  // ----------------------------------------------------------
+  // RELOAD
+  // ----------------------------------------------------------
+
+  socket.on("reload", () => {
+
+    const player = players[socket.id];
+
+    if (!player) return;
+
+    if (player.isReloading) return;
+
+    if (player.ammo >= MAGAZINE_SIZE) return;
+
+    player.isReloading = true;
+
+    io.emit("playerReloading", {
+      id: player.id
+    });
+
+    player.reloadTimer = setTimeout(() => {
+
+      if (!players[player.id]) return;
+
+      player.ammo = MAGAZINE_SIZE;
+      player.isReloading = false;
+
+      io.emit("reloadComplete", {
+        id: player.id,
+        ammo: player.ammo
+      });
+
+    }, RELOAD_TIME);
+  });
+
+  // ----------------------------------------------------------
+  // FIRE BULLET
+  // ----------------------------------------------------------
+
+  socket.on("fireBullet", (data) => {
+
+    const player = players[socket.id];
+
+    if (!player) return;
+
+    if (player.health <= 0) return;
+
+    if (player.isLocked) return;
+
+    if (player.isReloading) return;
+
+    const now = Date.now();
+
+    if (now - player.lastShot < FIRE_COOLDOWN) {
+      return;
     }
 
-    function makeDraggable(elmnt) {
-        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    if (player.ammo <= 0) {
 
-        elmnt.onmousedown = dragMouseDown;
+      socket.emit("emptyMagazine");
 
-        function dragMouseDown(e) {
-            e = e || window.event;
-            // Allow interactions with the calendar input box without triggering drag
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
-
-            e.preventDefault();
-            pos3 = e.clientX;
-            pos4 = e.clientY;
-            document.onmouseup = closeDragElement;
-            document.onmousemove = elementDrag;
-        }
-
-        function elementDrag(e) {
-            e = e || window.event;
-            e.preventDefault();
-            pos1 = pos3 - e.clientX;
-            pos2 = pos4 - e.clientY;
-            pos3 = e.clientX;
-            pos4 = e.clientY;
-
-            const newTop = (elmnt.offsetTop - pos2) + "px";
-            const newLeft = (elmnt.offsetLeft - pos1) + "px";
-
-            elmnt.style.bottom = 'auto';
-            elmnt.style.right = 'auto';
-            elmnt.style.top = newTop;
-            elmnt.style.left = newLeft;
-
-            GM_setValue("widget_pos", { top: newTop, left: newLeft });
-        }
-
-        function closeDragElement() {
-            document.onmouseup = null;
-            document.onmousemove = null;
-        }
+      return;
     }
 
-    function updateWidgetContent(widgetEl = document.getElementById('teletype-stats-widget')) {
-        if (!widgetEl) return;
+    if (!data) return;
 
-        const isViewingToday = (selectedDate === today);
-        const activeStats = isViewingToday ? { accepted: todayAccepted, rejected: todayRejected } : getStatsForDate(selectedDate);
-        const totalSelectedDate = activeStats.accepted + activeStats.rejected;
+    const angle = Number(data.angle);
 
-        widgetEl.innerHTML = `
-            <div style="background-color: #051405; border-bottom: 1px solid #00ff00; padding: 4px 6px; margin: -12px -16px 10px -16px; color: #00ff00; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 11px;">
-                <span>REPORT STATUS</span>
-                <span style="font-size: 9px; color: #00ff00;">[BINSER-TOOLS]</span>
-            </div>
-
-            <div><span style="color: #ff2255;">TRACK THE WORK</span> <span style="color: #ff9900;">&lt;STAY FOCUSED&gt;</span></div>
-
-            <div style="margin-top: 4px;">
-                <span style="color: #ff0055;">FORM</span> status = <span style="color: ${isFormActive ? '#00ff00' : '#ffaa00'}; font-weight: bold;">"${isFormActive ? 'FORM_LOADED' : 'WAITING'}"</span>;
-            </div>
-
-            <div style="margin: 8px 0; display: flex; justify-content: space-between; align-items: center;">
-                <span style="color: #ff0055;">WORK</span> <span style="color: #00ff00;">date</span> =
-                <input type="date" id="teletype-date-picker" value="${selectedDate}" style="background-color: #000000; color: #ff9900; border: 1px solid #00ff00; border-radius: 0; padding: 2px 4px; font-family: monospace; font-size: 11px; cursor: pointer; outline: none; color-scheme: dark;">
-            </div>
-
-            <div><span style="color: #00ff00;">${isViewingToday ? 'today' : 'selected'}_accepted</span> = <span style="color: #00ff00; font-weight: bold;">${activeStats.accepted}</span>;</div>
-            <div><span style="color: #ff0055;">${isViewingToday ? 'today' : 'selected'}_rejected</span> = <span style="color: #ff2255; font-weight: bold;">${activeStats.rejected}</span>;</div>
-            <div><span style="color: #ff0055;">${isViewingToday ? 'today' : 'selected'}_total</span> = <span style="color: #ffffff; font-weight: bold;">${totalSelectedDate}</span>;</div>
-
-            <div style="color: #00aa00; font-style: italic; margin-top: 6px;">// All-time performance stats</div>
-            <div><span style="color: #ff0055;">all_time_accepted</span> = <span style="color: #ff00ff;">${totalAccepted}</span>;</div>
-            <div><span style="color: #ff0055;">all_time_rejected</span> = <span style="color: #ff2255;">${totalRejected}</span>;</div>
-        `;
-
-        // Attach event listener for the Calendar Date Picker
-        const dateInput = widgetEl.querySelector('#teletype-date-picker');
-        if (dateInput) {
-            dateInput.addEventListener('change', (e) => {
-                selectedDate = e.target.value;
-                updateWidgetContent();
-            });
-        }
+    if (!Number.isFinite(angle)) {
+      return;
     }
 
-    function incrementStat(type) {
-        const now = Date.now();
-        if (now - lastActionTime < 800) return;
-        lastActionTime = now;
+    player.lastShot = now;
+    player.ammo--;
 
-        if (type === 'accept') {
-            todayAccepted++;
-            totalAccepted++;
-            GM_setValue("total_accepted", totalAccepted);
-            console.log("Counted: ACCEPT");
-        } else if (type === 'reject') {
-            todayRejected++;
-            totalRejected++;
-            GM_setValue("total_rejected", totalRejected);
-            console.log("Counted: REJECT");
+    // Bullet starts slightly in front of player.
+    const startX =
+      player.x + Math.cos(angle) * 25;
+
+    const startY =
+      player.y + Math.sin(angle) * 25;
+
+    const bulletId =
+      `${socket.id}-${Date.now()}-${Math.random()}`;
+
+    const bullet = {
+      id: bulletId,
+      ownerId: socket.id,
+      x: startX,
+      y: startY,
+      vx: Math.cos(angle) * 12,
+      vy: Math.sin(angle) * 12,
+      angle
+    };
+
+    io.emit("bulletFired", bullet);
+
+    socket.emit("ammoUpdate", {
+      ammo: player.ammo
+    });
+
+    // --------------------------------------------------------
+    // SERVER-SIDE BULLET SIMULATION
+    // --------------------------------------------------------
+
+    let bulletX = startX;
+    let bulletY = startY;
+
+    const bulletSteps = 100;
+
+    for (let i = 0; i < bulletSteps; i++) {
+
+      bulletX += bullet.vx;
+      bulletY += bullet.vy;
+
+      if (isWallTile(bulletX, bulletY)) {
+        break;
+      }
+
+      let hitPlayer = null;
+
+      for (const target of Object.values(players)) {
+
+        if (target.id === player.id) continue;
+
+        if (target.health <= 0) continue;
+
+        if (target.isLocked) continue;
+
+        const distance = Math.hypot(
+          bulletX - target.x,
+          bulletY - target.y
+        );
+
+        if (distance <= PLAYER_RADIUS + 5) {
+          hitPlayer = target;
+          break;
         }
+      }
 
-        saveStatsForDate(today, todayAccepted, todayRejected);
-        selectedDate = today;
-        updateWidgetContent();
+      if (hitPlayer) {
+
+        applyDamage(
+          player,
+          hitPlayer,
+          BULLET_DAMAGE
+        );
+
+        break;
+      }
+    }
+  });
+
+  // ----------------------------------------------------------
+  // DAMAGE
+  // ----------------------------------------------------------
+
+  function applyDamage(attacker, target, damage) {
+
+    let remainingDamage = damage;
+
+    // Armor absorbs damage first.
+    if (target.armor > 0) {
+
+      const armorDamage =
+        Math.min(target.armor, remainingDamage);
+
+      target.armor -= armorDamage;
+      remainingDamage -= armorDamage;
     }
 
-    // Check if the "Fields Complete" popup overlay is visible
-    function isCompletionModalPresent() {
-        const bodyText = document.body.innerText || "";
-        if (bodyText.includes("Fields Complete") || bodyText.includes("Press complete to save your changes")) {
-            return true;
-        }
-       
-        // Secondary check: look for specific buttons inside modal dialogs
-        const buttons = Array.from(document.querySelectorAll('button, div[role="button"], input[type="button"]'));
-        return buttons.some(btn => {
-            const text = btn.textContent.trim().toLowerCase();
-            return text === 'complete' || text === 'complete & logout';
-        });
+    target.health -= remainingDamage;
+
+    if (target.health < 0) {
+      target.health = 0;
     }
 
-    // --- GLOBAL MOUSE CLICK INTERCEPTOR ---
-    document.addEventListener('click', (event) => {
-        const target = event.target;
-        if (!target) return;
+    // Increment cell-lock hit counter.
+    target.lockHits++;
 
-        const text = (target.textContent || target.value || '').trim().toLowerCase();
+    io.emit("playerDamaged", {
+      targetId: target.id,
+      attackerId: attacker.id,
+      health: target.health,
+      armor: target.armor,
+      lockHits: target.lockHits
+    });
 
-        if (text === 'accept') {
-            incrementStat('accept');
-            isFormActive = false;
-            scheduleNextRedButtonClick();
-        } else if (text === 'reject') {
-            incrementStat('reject');
-            isFormActive = false;
-            scheduleNextRedButtonClick();
-        }
-    }, true);
+    // --------------------------------------------------------
+    // DEATH
+    // --------------------------------------------------------
 
-    // --- GLOBAL ENTER KEY INTERCEPTOR ---
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && isFormActive) {
-            // Check if the "Fields Complete" overlay is open
-            if (isCompletionModalPresent()) {
-                console.log("Completion modal detected. Enter key press ignored for counting.");
-                return;
-            }
+    if (target.health <= 0) {
 
-            incrementStat('accept');
-            isFormActive = false;
-            scheduleNextRedButtonClick();
-        }
-    }, true);
+      attacker.kills++;
+      target.deaths++;
 
-    // --- AUTOMATION ENGINE ---
-    function scheduleNextRedButtonClick() {
-        if (isFormActive) return;
+      io.emit("playerKilled", {
+        killerId: attacker.id,
+        killerName: attacker.name,
+        victimId: target.id,
+        victimName: target.name
+      });
 
-        const randomDelayMs = Math.floor(
-            Math.random() * (MAX_REFRESH_SEC - MIN_REFRESH_SEC + 1) + MIN_REFRESH_SEC
-        ) * 1000;
+      respawnPlayer(target);
 
-        console.log(`Auto-clicking red Refresh button in ${randomDelayMs / 1000} seconds...`);
+      broadcastPlayers();
 
-        refreshTimeout = setTimeout(() => {
-            if (isFormActive) return;
-
-            const buttons = Array.from(document.querySelectorAll('button, div[role="button"], input[type="button"]'));
-            const redRefreshBtn = buttons.find(btn => btn.textContent.trim().toLowerCase() === 'refresh');
-
-            if (redRefreshBtn) {
-                console.log("Clicking red Refresh button now.");
-                redRefreshBtn.click();
-            }
-
-            scheduleNextRedButtonClick();
-        }, randomDelayMs);
+      return;
     }
 
-    // Continuous State Check (Runs every 500ms)
-    setInterval(() => {
-        createWidget();
+    // --------------------------------------------------------
+    // VIOLET CELL LOCK
+    // --------------------------------------------------------
 
-        const buttons = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
-        const acceptBtn = buttons.find(btn => btn.textContent.trim().toLowerCase() === 'accept' || btn.value?.toLowerCase() === 'accept');
-        const rejectBtn = buttons.find(btn => btn.textContent.trim().toLowerCase() === 'reject' || btn.value?.toLowerCase() === 'reject');
+    if (target.lockHits >= LOCK_HITS) {
 
-        if (acceptBtn || rejectBtn) {
-            if (!isFormActive) {
-                isFormActive = true;
-                if (refreshTimeout) clearTimeout(refreshTimeout);
+      lockPlayer(target);
 
-                playArcadeSound();
-                updateWidgetContent();
-                console.log("Form detected! Stopped auto-refresh.");
-            }
-        } else {
-            if (isFormActive) {
-                isFormActive = false;
-                updateWidgetContent();
-                scheduleNextRedButtonClick();
-            }
-        }
-    }, 500);
+    }
+  }
 
-    // Initial Start
-    scheduleNextRedButtonClick();
-})();
+  // ----------------------------------------------------------
+  // LOCK PLAYER
+  // ----------------------------------------------------------
+
+  function lockPlayer(player) {
+
+    if (player.isLocked) return;
+
+    player.isLocked = true;
+
+    player.lockHits = 0;
+
+    player.x = 11.5 * TILE_SIZE;
+    player.y = 11.5 * TILE_SIZE;
+
+    player.health = MAX_HEALTH;
+    player.armor = MAX_ARMOR;
+
+    io.emit("playerLocked", {
+      targetId: player.id,
+      x: player.x,
+      y: player.y,
+      duration: LOCK_TIME
+    });
+
+    player.lockTimer = setTimeout(() => {
+
+      unlockPlayer(player);
+
+    }, LOCK_TIME);
+  }
+
+  // ----------------------------------------------------------
+  // UNLOCK
+  // ----------------------------------------------------------
+
+  function unlockPlayer(player) {
+
+    if (!players[player.id]) return;
+
+    player.isLocked = false;
+    player.lockHits = 0;
+
+    const spawn = getSpawnPoint();
+
+    player.x = spawn.x;
+    player.y = spawn.y;
+
+    player.health = MAX_HEALTH;
+    player.armor = MAX_ARMOR;
+
+    io.emit("playerUnlocked", {
+      targetId: player.id,
+      x: player.x,
+      y: player.y
+    });
+
+    broadcastPlayers();
+  }
+
+  // ----------------------------------------------------------
+  // MANUAL UNLOCK
+  // ----------------------------------------------------------
+
+  socket.on("requestUnlock", () => {
+
+    const player = players[socket.id];
+
+    if (!player) return;
+
+    // Do not allow client to bypass the timer.
+    // Unlock happens server-side only.
+    socket.emit("unlockDenied", {
+      message: "The cell lock expires automatically."
+    });
+  });
+
+  // ----------------------------------------------------------
+  // RESPAWN
+  // ----------------------------------------------------------
+
+  function respawnPlayer(player) {
+
+    if (!players[player.id]) return;
+
+    player.health = 0;
+
+    io.emit("playerRespawning", {
+      id: player.id
+    });
+
+    if (player.respawnTimer) {
+      clearTimeout(player.respawnTimer);
+    }
+
+    player.respawnTimer = setTimeout(() => {
+
+      if (!players[player.id]) return;
+
+      const spawn = getSpawnPoint();
+
+      player.x = spawn.x;
+      player.y = spawn.y;
+
+      player.health = MAX_HEALTH;
+      player.armor = MAX_ARMOR;
+      player.ammo = MAGAZINE_SIZE;
+      player.lockHits = 0;
+      player.isReloading = false;
+      player.isLocked = false;
+
+      io.emit("playerRespawned", publicPlayer(player));
+
+      broadcastPlayers();
+
+    }, 3000);
+  }
+
+  // ----------------------------------------------------------
+  // CHAT
+  // ----------------------------------------------------------
+
+  socket.on("chatMessage", (message) => {
+
+    const player = players[socket.id];
+
+    if (!player) return;
+
+    if (typeof message !== "string") return;
+
+    const cleanMessage = message
+      .replace(/[<>]/g, "")
+      .trim()
+      .substring(0, 150);
+
+    if (!cleanMessage) return;
+
+    io.emit("chatMessage", {
+      name: player.name,
+      msg: cleanMessage
+    });
+  });
+
+  // ----------------------------------------------------------
+  // DISCONNECT
+  // ----------------------------------------------------------
+
+  socket.on("disconnect", () => {
+
+    const player = players[socket.id];
+
+    if (player) {
+
+      if (player.reloadTimer) {
+        clearTimeout(player.reloadTimer);
+      }
+
+      if (player.lockTimer) {
+        clearTimeout(player.lockTimer);
+      }
+
+      if (player.respawnTimer) {
+        clearTimeout(player.respawnTimer);
+      }
+    }
+
+    delete players[socket.id];
+
+    io.emit("playerDisconnected", socket.id);
+
+    broadcastPlayers();
+
+    console.log("Player disconnected:", socket.id);
+  });
+});
+
+// ------------------------------------------------------------
+// START SERVER
+// ------------------------------------------------------------
+
+server.listen(PORT, "0.0.0.0", () => {
+
+  console.log(
+    `Arcadia Maze server running on port ${PORT}`
+  );
+
+});
