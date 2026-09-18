@@ -1,8 +1,3 @@
-// ============================================================
-// ARCADIA MAZE CONQUEST - MULTIPLAYER SERVER
-// Node.js + Express + Socket.IO
-// ============================================================
-
 const express = require("express");
 const http = require("http");
 const path = require("path");
@@ -10,746 +5,717 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
+const io = new Server(server);
 
-// ------------------------------------------------------------
-// STATIC FILES
-// ------------------------------------------------------------
+const PORT = process.env.PORT || 10000;
 
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(__dirname));
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
+const WORLD = {
+    width: 2400,
+    height: 1600,
 
-// ------------------------------------------------------------
-// GAME CONSTANTS
-// ------------------------------------------------------------
+    // Main playable dock
+    dock: {
+        x: 250,
+        y: 180,
+        width: 1900,
+        height: 1240
+    }
+};
 
-const PORT = process.env.PORT || 3000;
+// --------------------------------------------------
+// SHIPPING YARD OBSTACLES
+// --------------------------------------------------
 
-const TILE_SIZE = 64;
-const MAP_COLS = 25;
-const MAP_ROWS = 25;
+const obstacles = [
+    // Top container stacks
+    { x: 430, y: 300, w: 260, h: 100 },
+    { x: 760, y: 300, w: 220, h: 100 },
+    { x: 1080, y: 300, w: 280, h: 100 },
+    { x: 1450, y: 300, w: 250, h: 100 },
 
-const PLAYER_RADIUS = 18;
+    // Left stacks
+    { x: 380, y: 500, w: 120, h: 300 },
+    { x: 580, y: 520, w: 130, h: 250 },
 
-const MAX_HEALTH = 100;
-const MAX_ARMOR = 25;
+    // Center stacks
+    { x: 950, y: 520, w: 250, h: 110 },
+    { x: 1280, y: 520, w: 150, h: 260 },
 
-const BULLET_DAMAGE = 25;
-const FIRE_COOLDOWN = 120;
+    // Right stacks
+    { x: 1600, y: 500, w: 260, h: 110 },
+    { x: 1810, y: 650, w: 120, h: 280 },
 
-const MAGAZINE_SIZE = 30;
-const RELOAD_TIME = 1500;
+    // Lower area
+    { x: 450, y: 1000, w: 260, h: 110 },
+    { x: 800, y: 900, w: 150, h: 250 },
+    { x: 1050, y: 1050, w: 300, h: 110 },
+    { x: 1450, y: 950, w: 180, h: 240 },
+    { x: 1700, y: 1050, w: 270, h: 110 },
 
-const LOCK_HITS = 10;
-const LOCK_TIME = 30000;
-
-const PLAYER_SPEED = 3.5;
-const SPRINT_SPEED = 5.2;
-
-// ------------------------------------------------------------
-// MAZE
-// 1 = wall
-// 0 = floor
-// 2 = violet cell
-// ------------------------------------------------------------
-
-const mazeMap = [
-  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-  [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
-  [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
-  [1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1],
-  [1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1],
-  [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,1],
-  [1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1],
-  [1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1],
-  [1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1],
-  [1,0,1,0,0,0,0,0,1,2,2,2,2,2,1,0,0,0,0,0,0,0,1,0,1],
-  [1,0,1,1,1,0,1,0,1,2,2,2,2,2,1,0,1,0,1,1,1,0,1,0,1],
-  [1,0,0,0,1,0,1,0,1,2,2,2,2,2,1,0,1,0,1,0,0,0,0,0,1],
-  [1,1,1,0,1,0,1,0,1,2,2,2,2,2,1,0,1,0,1,0,1,1,1,1,1],
-  [1,0,0,0,1,0,1,0,1,2,2,2,2,2,1,0,1,0,1,0,0,0,0,0,1],
-  [1,0,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
-  [1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1],
-  [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
-  [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
-  [1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1],
-  [1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1],
-  [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,1],
-  [1,1,1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1],
-  [1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    // Bottom stacks
+    { x: 650, y: 1250, w: 300, h: 90 },
+    { x: 1150, y: 1250, w: 250, h: 90 },
+    { x: 1500, y: 1250, w: 300, h: 90 }
 ];
 
-// ------------------------------------------------------------
-// PLAYER SPAWN POINTS
-// ------------------------------------------------------------
-
-const spawnPoints = [
-  { x: 1.5 * TILE_SIZE, y: 1.5 * TILE_SIZE },
-  { x: 23.5 * TILE_SIZE, y: 1.5 * TILE_SIZE },
-  { x: 1.5 * TILE_SIZE, y: 23.5 * TILE_SIZE },
-  { x: 23.5 * TILE_SIZE, y: 23.5 * TILE_SIZE },
-  { x: 5.5 * TILE_SIZE, y: 5.5 * TILE_SIZE },
-  { x: 19.5 * TILE_SIZE, y: 5.5 * TILE_SIZE },
-  { x: 5.5 * TILE_SIZE, y: 19.5 * TILE_SIZE },
-  { x: 19.5 * TILE_SIZE, y: 19.5 * TILE_SIZE }
-];
-
-// ------------------------------------------------------------
-// GAME STATE
-// ------------------------------------------------------------
+// --------------------------------------------------
+// PLAYERS
+// --------------------------------------------------
 
 const players = {};
 
-let spawnIndex = 0;
+const playerColors = [
+    "#22c55e",
+    "#ef4444",
+    "#38bdf8",
+    "#f59e0b",
+    "#a855f7",
+    "#ec4899",
+    "#14b8a6",
+    "#f97316"
+];
 
-// ------------------------------------------------------------
-// HELPERS
-// ------------------------------------------------------------
+// --------------------------------------------------
+// HEALTH PICKUPS
+// --------------------------------------------------
 
-function getSpawnPoint() {
-  const spawn = spawnPoints[spawnIndex % spawnPoints.length];
-  spawnIndex++;
+let hearts = [];
 
-  return {
-    x: spawn.x,
-    y: spawn.y
-  };
+function randomDockPosition() {
+    for (let attempt = 0; attempt < 100; attempt++) {
+
+        const x =
+            WORLD.dock.x + 80 +
+            Math.random() * (WORLD.dock.width - 160);
+
+        const y =
+            WORLD.dock.y + 80 +
+            Math.random() * (WORLD.dock.height - 160);
+
+        if (!isInsideObstacle(x, y, 30)) {
+            return { x, y };
+        }
+    }
+
+    return {
+        x: 1200,
+        y: 800
+    };
 }
 
-function isWallTile(x, y) {
-  const col = Math.floor(x / TILE_SIZE);
-  const row = Math.floor(y / TILE_SIZE);
+function createHeart() {
 
-  if (
-    col < 0 ||
-    col >= MAP_COLS ||
-    row < 0 ||
-    row >= MAP_ROWS
-  ) {
+    const pos = randomDockPosition();
+
+    hearts.push({
+        id: Math.random().toString(36).slice(2),
+        x: pos.x,
+        y: pos.y,
+        heal: 25
+    });
+}
+
+// Initial hearts
+for (let i = 0; i < 8; i++) {
+    createHeart();
+}
+
+// New heart every 7 seconds
+setInterval(() => {
+
+    if (hearts.length < 12) {
+        createHeart();
+        broadcastHearts();
+    }
+
+}, 7000);
+
+// --------------------------------------------------
+// COLLISION
+// --------------------------------------------------
+
+function isInsideObstacle(x, y, radius = 20) {
+
+    return obstacles.some(o => {
+
+        return (
+            x + radius > o.x &&
+            x - radius < o.x + o.w &&
+            y + radius > o.y &&
+            y - radius < o.y + o.h
+        );
+
+    });
+}
+
+function isInsideDock(x, y, radius = 20) {
+
+    return (
+        x - radius >= WORLD.dock.x &&
+        x + radius <= WORLD.dock.x + WORLD.dock.width &&
+        y - radius >= WORLD.dock.y &&
+        y + radius <= WORLD.dock.y + WORLD.dock.height
+    );
+}
+
+function canMoveTo(x, y) {
+
+    if (!isInsideDock(x, y, 20)) {
+        return false;
+    }
+
+    if (isInsideObstacle(x, y, 20)) {
+        return false;
+    }
+
     return true;
-  }
-
-  return mazeMap[row][col] === 1;
 }
 
-function isValidPosition(x, y) {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return false;
-  }
+// --------------------------------------------------
+// SPAWN
+// --------------------------------------------------
 
-  if (isWallTile(x - PLAYER_RADIUS, y)) return false;
-  if (isWallTile(x + PLAYER_RADIUS, y)) return false;
-  if (isWallTile(x, y - PLAYER_RADIUS)) return false;
-  if (isWallTile(x, y + PLAYER_RADIUS)) return false;
+function findSpawnPoint() {
 
-  return true;
+    for (let i = 0; i < 100; i++) {
+
+        const p = randomDockPosition();
+
+        if (!isInsideObstacle(p.x, p.y, 30)) {
+
+            const tooClose = Object.values(players).some(player => {
+
+                const dx = player.x - p.x;
+                const dy = player.y - p.y;
+
+                return Math.sqrt(dx * dx + dy * dy) < 160;
+            });
+
+            if (!tooClose) {
+                return p;
+            }
+        }
+    }
+
+    return {
+        x: 1200,
+        y: 800
+    };
 }
 
-function sanitizeName(name) {
-  if (typeof name !== "string") {
-    return "Soldier";
-  }
+// --------------------------------------------------
+// LEVEL SYSTEM
+// --------------------------------------------------
 
-  return name
-    .replace(/[<>]/g, "")
-    .trim()
-    .substring(0, 14) || "Soldier";
+function calculateLevel(kills) {
+
+    // 1 kill = level 1
+    // 2 kills = level 2
+    // etc.
+
+    return kills;
 }
+
+// --------------------------------------------------
+// PLAYER STATE
+// --------------------------------------------------
 
 function publicPlayer(player) {
-  return {
-    id: player.id,
-    x: player.x,
-    y: player.y,
-    rotation: player.rotation,
-    name: player.name,
-    health: player.health,
-    armor: player.armor,
-    kills: player.kills,
-    deaths: player.deaths,
-    ammo: player.ammo,
-    isReloading: player.isReloading,
-    isLocked: player.isLocked,
-    isSprinting: player.isSprinting
-  };
-}
 
-function broadcastPlayers() {
-  io.emit(
-    "playersState",
-    Object.values(players).map(publicPlayer)
-  );
-}
-
-// ------------------------------------------------------------
-// PLAYER CREATION
-// ------------------------------------------------------------
-
-function createPlayer(socket) {
-  const spawn = getSpawnPoint();
-
-  players[socket.id] = {
-    id: socket.id,
-
-    x: spawn.x,
-    y: spawn.y,
-
-    rotation: 0,
-
-    name: "Soldier",
-
-    health: MAX_HEALTH,
-    armor: MAX_ARMOR,
-
-    kills: 0,
-    deaths: 0,
-
-    ammo: MAGAZINE_SIZE,
-
-    isReloading: false,
-    reloadTimer: null,
-
-    isLocked: false,
-    lockTimer: null,
-
-    lockHits: 0,
-
-    isSprinting: false,
-
-    lastShot: 0,
-
-    respawnTimer: null
-  };
-}
-
-// ------------------------------------------------------------
-// CONNECTION
-// ------------------------------------------------------------
-
-io.on("connection", (socket) => {
-
-  console.log("Player connected:", socket.id);
-
-  createPlayer(socket);
-
-  socket.emit("initialState", {
-    player: publicPlayer(players[socket.id]),
-    players: Object.values(players).map(publicPlayer)
-  });
-
-  socket.broadcast.emit(
-    "playerJoined",
-    publicPlayer(players[socket.id])
-  );
-
-  // ----------------------------------------------------------
-  // JOIN GAME
-  // ----------------------------------------------------------
-
-  socket.on("joinGame", (name) => {
-
-    const player = players[socket.id];
-
-    if (!player) return;
-
-    player.name = sanitizeName(name);
-
-    socket.emit("joinAccepted", publicPlayer(player));
-
-    broadcastPlayers();
-  });
-
-  // ----------------------------------------------------------
-  // PLAYER MOVEMENT
-  // ----------------------------------------------------------
-
-  socket.on("playerMovement", (data) => {
-
-    const player = players[socket.id];
-
-    if (!player) return;
-
-    if (player.isLocked) return;
-
-    if (player.health <= 0) return;
-
-    if (!data) return;
-
-    const x = Number(data.x);
-    const y = Number(data.y);
-    const rotation = Number(data.rotation);
-
-    if (
-      !Number.isFinite(x) ||
-      !Number.isFinite(y) ||
-      !Number.isFinite(rotation)
-    ) {
-      return;
-    }
-
-    // Prevent impossible teleports.
-    const distance = Math.hypot(
-      x - player.x,
-      y - player.y
-    );
-
-    const maxDistance = player.isSprinting
-      ? SPRINT_SPEED * 4
-      : PLAYER_SPEED * 4;
-
-    if (distance > maxDistance) {
-      return;
-    }
-
-    if (!isValidPosition(x, y)) {
-      return;
-    }
-
-    player.x = x;
-    player.y = y;
-
-    player.rotation = rotation;
-
-    socket.broadcast.emit(
-      "playerMoved",
-      publicPlayer(player)
-    );
-  });
-
-  // ----------------------------------------------------------
-  // SPRINT
-  // ----------------------------------------------------------
-
-  socket.on("sprintState", (sprinting) => {
-
-    const player = players[socket.id];
-
-    if (!player) return;
-
-    player.isSprinting = Boolean(sprinting);
-
-    socket.broadcast.emit("playerSprint", {
-      id: player.id,
-      sprinting: player.isSprinting
-    });
-  });
-
-  // ----------------------------------------------------------
-  // RELOAD
-  // ----------------------------------------------------------
-
-  socket.on("reload", () => {
-
-    const player = players[socket.id];
-
-    if (!player) return;
-
-    if (player.isReloading) return;
-
-    if (player.ammo >= MAGAZINE_SIZE) return;
-
-    player.isReloading = true;
-
-    io.emit("playerReloading", {
-      id: player.id
-    });
-
-    player.reloadTimer = setTimeout(() => {
-
-      if (!players[player.id]) return;
-
-      player.ammo = MAGAZINE_SIZE;
-      player.isReloading = false;
-
-      io.emit("reloadComplete", {
+    return {
         id: player.id,
-        ammo: player.ammo
-      });
-
-    }, RELOAD_TIME);
-  });
-
-  // ----------------------------------------------------------
-  // FIRE BULLET
-  // ----------------------------------------------------------
-
-  socket.on("fireBullet", (data) => {
-
-    const player = players[socket.id];
-
-    if (!player) return;
-
-    if (player.health <= 0) return;
-
-    if (player.isLocked) return;
-
-    if (player.isReloading) return;
-
-    const now = Date.now();
-
-    if (now - player.lastShot < FIRE_COOLDOWN) {
-      return;
-    }
-
-    if (player.ammo <= 0) {
-
-      socket.emit("emptyMagazine");
-
-      return;
-    }
-
-    if (!data) return;
-
-    const angle = Number(data.angle);
-
-    if (!Number.isFinite(angle)) {
-      return;
-    }
-
-    player.lastShot = now;
-    player.ammo--;
-
-    // Bullet starts slightly in front of player.
-    const startX =
-      player.x + Math.cos(angle) * 25;
-
-    const startY =
-      player.y + Math.sin(angle) * 25;
-
-    const bulletId =
-      `${socket.id}-${Date.now()}-${Math.random()}`;
-
-    const bullet = {
-      id: bulletId,
-      ownerId: socket.id,
-      x: startX,
-      y: startY,
-      vx: Math.cos(angle) * 12,
-      vy: Math.sin(angle) * 12,
-      angle
+        name: player.name,
+        x: player.x,
+        y: player.y,
+        hp: player.hp,
+        maxHp: player.maxHp,
+        kills: player.kills,
+        level: player.level,
+        color: player.color,
+        angle: player.angle,
+        alive: player.alive
     };
+}
 
-    io.emit("bulletFired", bullet);
+// --------------------------------------------------
+// HEART BROADCAST
+// --------------------------------------------------
 
-    socket.emit("ammoUpdate", {
-      ammo: player.ammo
-    });
+function broadcastHearts() {
 
-    // --------------------------------------------------------
-    // SERVER-SIDE BULLET SIMULATION
-    // --------------------------------------------------------
+    io.emit("hearts:update", hearts);
+}
 
-    let bulletX = startX;
-    let bulletY = startY;
+// --------------------------------------------------
+// CONNECTION
+// --------------------------------------------------
 
-    const bulletSteps = 100;
+io.on("connection", socket => {
 
-    for (let i = 0; i < bulletSteps; i++) {
+    console.log("Player connected:", socket.id);
 
-      bulletX += bullet.vx;
-      bulletY += bullet.vy;
+    socket.on("player:join", name => {
 
-      if (isWallTile(bulletX, bulletY)) {
-        break;
-      }
+        name = String(name || "Soldier")
+            .replace(/[<>]/g, "")
+            .trim()
+            .slice(0, 14);
 
-      let hitPlayer = null;
-
-      for (const target of Object.values(players)) {
-
-        if (target.id === player.id) continue;
-
-        if (target.health <= 0) continue;
-
-        if (target.isLocked) continue;
-
-        const distance = Math.hypot(
-          bulletX - target.x,
-          bulletY - target.y
-        );
-
-        if (distance <= PLAYER_RADIUS + 5) {
-          hitPlayer = target;
-          break;
+        if (!name) {
+            name = "Soldier";
         }
-      }
 
-      if (hitPlayer) {
+        const spawn = findSpawnPoint();
 
-        applyDamage(
-          player,
-          hitPlayer,
-          BULLET_DAMAGE
-        );
+        players[socket.id] = {
 
-        break;
-      }
-    }
-  });
+            id: socket.id,
 
-  // ----------------------------------------------------------
-  // DAMAGE
-  // ----------------------------------------------------------
+            name,
 
-  function applyDamage(attacker, target, damage) {
+            x: spawn.x,
+            y: spawn.y,
 
-    let remainingDamage = damage;
+            hp: 100,
+            maxHp: 100,
 
-    // Armor absorbs damage first.
-    if (target.armor > 0) {
+            kills: 0,
+            level: 0,
 
-      const armorDamage =
-        Math.min(target.armor, remainingDamage);
+            angle: 0,
 
-      target.armor -= armorDamage;
-      remainingDamage -= armorDamage;
-    }
+            alive: true,
 
-    target.health -= remainingDamage;
+            color:
+                playerColors[
+                    Object.keys(players).length %
+                    playerColors.length
+                ],
 
-    if (target.health < 0) {
-      target.health = 0;
-    }
+            lastShot: 0,
 
-    // Increment cell-lock hit counter.
-    target.lockHits++;
+            input: {
+                up: false,
+                down: false,
+                left: false,
+                right: false
+            }
+        };
 
-    io.emit("playerDamaged", {
-      targetId: target.id,
-      attackerId: attacker.id,
-      health: target.health,
-      armor: target.armor,
-      lockHits: target.lockHits
+        socket.emit("world:init", {
+
+            player: publicPlayer(players[socket.id]),
+
+            world: WORLD,
+
+            obstacles,
+
+            hearts
+        });
+
+        io.emit("players:update", getAllPlayers());
+
+        io.emit("system:message", {
+            text: `${name} joined the shipping yard.`
+        });
+
     });
 
-    // --------------------------------------------------------
-    // DEATH
-    // --------------------------------------------------------
+    // --------------------------------------------------
+    // MOVEMENT INPUT
+    // --------------------------------------------------
 
-    if (target.health <= 0) {
+    socket.on("player:input", input => {
 
-      attacker.kills++;
-      target.deaths++;
+        const player = players[socket.id];
 
-      io.emit("playerKilled", {
-        killerId: attacker.id,
-        killerName: attacker.name,
-        victimId: target.id,
-        victimName: target.name
-      });
+        if (!player || !player.alive) {
+            return;
+        }
 
-      respawnPlayer(target);
+        player.input = {
 
-      broadcastPlayers();
+            up: !!input.up,
+            down: !!input.down,
+            left: !!input.left,
+            right: !!input.right
+        };
 
-      return;
-    }
-
-    // --------------------------------------------------------
-    // VIOLET CELL LOCK
-    // --------------------------------------------------------
-
-    if (target.lockHits >= LOCK_HITS) {
-
-      lockPlayer(target);
-
-    }
-  }
-
-  // ----------------------------------------------------------
-  // LOCK PLAYER
-  // ----------------------------------------------------------
-
-  function lockPlayer(player) {
-
-    if (player.isLocked) return;
-
-    player.isLocked = true;
-
-    player.lockHits = 0;
-
-    player.x = 11.5 * TILE_SIZE;
-    player.y = 11.5 * TILE_SIZE;
-
-    player.health = MAX_HEALTH;
-    player.armor = MAX_ARMOR;
-
-    io.emit("playerLocked", {
-      targetId: player.id,
-      x: player.x,
-      y: player.y,
-      duration: LOCK_TIME
+        if (typeof input.angle === "number") {
+            player.angle = input.angle;
+        }
     });
 
-    player.lockTimer = setTimeout(() => {
+    // --------------------------------------------------
+    // SHOOT
+    // --------------------------------------------------
 
-      unlockPlayer(player);
+    socket.on("player:shoot", data => {
 
-    }, LOCK_TIME);
-  }
+        const shooter = players[socket.id];
 
-  // ----------------------------------------------------------
-  // UNLOCK
-  // ----------------------------------------------------------
+        if (!shooter || !shooter.alive) {
+            return;
+        }
 
-  function unlockPlayer(player) {
+        const now = Date.now();
 
-    if (!players[player.id]) return;
+        // Fire rate
+        if (now - shooter.lastShot < 180) {
+            return;
+        }
 
-    player.isLocked = false;
-    player.lockHits = 0;
+        shooter.lastShot = now;
 
-    const spawn = getSpawnPoint();
+        let angle = Number(data?.angle);
 
-    player.x = spawn.x;
-    player.y = spawn.y;
+        if (!Number.isFinite(angle)) {
+            angle = shooter.angle;
+        }
 
-    player.health = MAX_HEALTH;
-    player.armor = MAX_ARMOR;
+        shooter.angle = angle;
 
-    io.emit("playerUnlocked", {
-      targetId: player.id,
-      x: player.x,
-      y: player.y
+        const range = 650;
+
+        const endX =
+            shooter.x + Math.cos(angle) * range;
+
+        const endY =
+            shooter.y + Math.sin(angle) * range;
+
+        // Check enemy intersection
+        let hitPlayer = null;
+        let closestDistance = Infinity;
+
+        for (const target of Object.values(players)) {
+
+            if (
+                target.id === shooter.id ||
+                !target.alive
+            ) {
+                continue;
+            }
+
+            // Distance from target to shooting line
+            const vx = endX - shooter.x;
+            const vy = endY - shooter.y;
+
+            const wx = target.x - shooter.x;
+            const wy = target.y - shooter.y;
+
+            const lengthSq = vx * vx + vy * vy;
+
+            if (lengthSq === 0) {
+                continue;
+            }
+
+            let t =
+                (wx * vx + wy * vy) /
+                lengthSq;
+
+            t = Math.max(0, Math.min(1, t));
+
+            const closestX =
+                shooter.x + t * vx;
+
+            const closestY =
+                shooter.y + t * vy;
+
+            const dx =
+                target.x - closestX;
+
+            const dy =
+                target.y - closestY;
+
+            const distance =
+                Math.sqrt(dx * dx + dy * dy);
+
+            const distanceFromShooter =
+                Math.sqrt(
+                    (target.x - shooter.x) ** 2 +
+                    (target.y - shooter.y) ** 2
+                );
+
+            if (
+                distance < 30 &&
+                distanceFromShooter < range &&
+                distanceFromShooter < closestDistance
+            ) {
+
+                hitPlayer = target;
+                closestDistance = distanceFromShooter;
+            }
+        }
+
+        // Send shooting effect to everybody
+        io.emit("weapon:shot", {
+
+            shooterId: shooter.id,
+
+            x: shooter.x,
+            y: shooter.y,
+
+            angle
+        });
+
+        // Hit
+        if (hitPlayer) {
+
+            hitPlayer.hp -= 25;
+
+            io.emit("combat:hit", {
+
+                attackerId: shooter.id,
+                targetId: hitPlayer.id,
+                damage: 25,
+                hp: hitPlayer.hp
+            });
+
+            if (hitPlayer.hp <= 0) {
+
+                hitPlayer.hp = 0;
+                hitPlayer.alive = false;
+
+                shooter.kills += 1;
+
+                shooter.level =
+                    calculateLevel(shooter.kills);
+
+                io.emit("player:killed", {
+
+                    killerId: shooter.id,
+
+                    victimId: hitPlayer.id,
+
+                    killerName: shooter.name,
+
+                    victimName: hitPlayer.name,
+
+                    kills: shooter.kills,
+
+                    level: shooter.level
+                });
+
+                // Respawn victim
+                setTimeout(() => {
+
+                    if (!players[hitPlayer.id]) {
+                        return;
+                    }
+
+                    const spawn = findSpawnPoint();
+
+                    hitPlayer.x = spawn.x;
+                    hitPlayer.y = spawn.y;
+
+                    hitPlayer.hp = 100;
+                    hitPlayer.alive = true;
+
+                    io.emit("player:respawn", {
+
+                        id: hitPlayer.id,
+
+                        x: hitPlayer.x,
+                        y: hitPlayer.y,
+
+                        hp: 100
+                    });
+
+                    io.emit("system:message", {
+
+                        text:
+                            `${hitPlayer.name} has respawned.`
+                    });
+
+                }, 2500);
+            }
+        }
     });
 
-    broadcastPlayers();
-  }
+    // --------------------------------------------------
+    // CHAT
+    // --------------------------------------------------
 
-  // ----------------------------------------------------------
-  // MANUAL UNLOCK
-  // ----------------------------------------------------------
+    socket.on("chat:message", message => {
 
-  socket.on("requestUnlock", () => {
+        const player = players[socket.id];
 
-    const player = players[socket.id];
+        if (!player) {
+            return;
+        }
 
-    if (!player) return;
+        message = String(message || "")
+            .replace(/[<>]/g, "")
+            .trim()
+            .slice(0, 120);
 
-    // Do not allow client to bypass the timer.
-    // Unlock happens server-side only.
-    socket.emit("unlockDenied", {
-      message: "The cell lock expires automatically."
+        if (!message) {
+            return;
+        }
+
+        io.emit("chat:message", {
+
+            id: player.id,
+
+            name: player.name,
+
+            color: player.color,
+
+            message
+        });
+
     });
-  });
 
-  // ----------------------------------------------------------
-  // RESPAWN
-  // ----------------------------------------------------------
+    // --------------------------------------------------
+    // DISCONNECT
+    // --------------------------------------------------
 
-  function respawnPlayer(player) {
+    socket.on("disconnect", () => {
 
-    if (!players[player.id]) return;
+        const player = players[socket.id];
 
-    player.health = 0;
+        if (player) {
 
-    io.emit("playerRespawning", {
-      id: player.id
+            io.emit("system:message", {
+
+                text:
+                    `${player.name} left the shipping yard.`
+            });
+
+            delete players[socket.id];
+
+            io.emit("players:update", getAllPlayers());
+        }
+
+        console.log("Player disconnected:", socket.id);
     });
-
-    if (player.respawnTimer) {
-      clearTimeout(player.respawnTimer);
-    }
-
-    player.respawnTimer = setTimeout(() => {
-
-      if (!players[player.id]) return;
-
-      const spawn = getSpawnPoint();
-
-      player.x = spawn.x;
-      player.y = spawn.y;
-
-      player.health = MAX_HEALTH;
-      player.armor = MAX_ARMOR;
-      player.ammo = MAGAZINE_SIZE;
-      player.lockHits = 0;
-      player.isReloading = false;
-      player.isLocked = false;
-
-      io.emit("playerRespawned", publicPlayer(player));
-
-      broadcastPlayers();
-
-    }, 3000);
-  }
-
-  // ----------------------------------------------------------
-  // CHAT
-  // ----------------------------------------------------------
-
-  socket.on("chatMessage", (message) => {
-
-    const player = players[socket.id];
-
-    if (!player) return;
-
-    if (typeof message !== "string") return;
-
-    const cleanMessage = message
-      .replace(/[<>]/g, "")
-      .trim()
-      .substring(0, 150);
-
-    if (!cleanMessage) return;
-
-    io.emit("chatMessage", {
-      name: player.name,
-      msg: cleanMessage
-    });
-  });
-
-  // ----------------------------------------------------------
-  // DISCONNECT
-  // ----------------------------------------------------------
-
-  socket.on("disconnect", () => {
-
-    const player = players[socket.id];
-
-    if (player) {
-
-      if (player.reloadTimer) {
-        clearTimeout(player.reloadTimer);
-      }
-
-      if (player.lockTimer) {
-        clearTimeout(player.lockTimer);
-      }
-
-      if (player.respawnTimer) {
-        clearTimeout(player.respawnTimer);
-      }
-    }
-
-    delete players[socket.id];
-
-    io.emit("playerDisconnected", socket.id);
-
-    broadcastPlayers();
-
-    console.log("Player disconnected:", socket.id);
-  });
 });
 
-// ------------------------------------------------------------
-// START SERVER
-// ------------------------------------------------------------
+// --------------------------------------------------
+// UPDATE PLAYER MOVEMENT
+// --------------------------------------------------
+
+const TICK_RATE = 30;
+const SPEED = 6;
+
+setInterval(() => {
+
+    for (const player of Object.values(players)) {
+
+        if (!player.alive) {
+            continue;
+        }
+
+        let dx = 0;
+        let dy = 0;
+
+        if (player.input.up) {
+            dy -= 1;
+        }
+
+        if (player.input.down) {
+            dy += 1;
+        }
+
+        if (player.input.left) {
+            dx -= 1;
+        }
+
+        if (player.input.right) {
+            dx += 1;
+        }
+
+        // Normalize diagonal movement
+        if (dx !== 0 || dy !== 0) {
+
+            const length =
+                Math.sqrt(dx * dx + dy * dy);
+
+            dx /= length;
+            dy /= length;
+
+            const newX =
+                player.x + dx * SPEED;
+
+            const newY =
+                player.y + dy * SPEED;
+
+            // Separate X/Y collision allows sliding
+            if (canMoveTo(newX, player.y)) {
+                player.x = newX;
+            }
+
+            if (canMoveTo(player.x, newY)) {
+                player.y = newY;
+            }
+        }
+
+        // Heart pickup
+        for (let i = hearts.length - 1; i >= 0; i--) {
+
+            const heart = hearts[i];
+
+            const dist = Math.sqrt(
+                (player.x - heart.x) ** 2 +
+                (player.y - heart.y) ** 2
+            );
+
+            if (dist < 35 && player.hp < player.maxHp) {
+
+                player.hp =
+                    Math.min(
+                        player.maxHp,
+                        player.hp + heart.heal
+                    );
+
+                hearts.splice(i, 1);
+
+                io.emit("heart:collected", {
+
+                    playerId: player.id,
+
+                    x: heart.x,
+                    y: heart.y,
+
+                    hp: player.hp
+                });
+
+                broadcastHearts();
+            }
+        }
+    }
+
+    io.emit("players:update", getAllPlayers());
+
+}, 1000 / TICK_RATE);
+
+// --------------------------------------------------
+// GET PLAYERS
+// --------------------------------------------------
+
+function getAllPlayers() {
+
+    const result = {};
+
+    for (const id in players) {
+
+        result[id] =
+            publicPlayer(players[id]);
+    }
+
+    return result;
+}
+
+// --------------------------------------------------
+// SERVER START
+// --------------------------------------------------
 
 server.listen(PORT, "0.0.0.0", () => {
 
-  console.log(
-    `Arcadia Maze server running on port ${PORT}`
-  );
+    console.log(
+        `Arcadia Shipping Yard running on port ${PORT}`
+    );
 
 });

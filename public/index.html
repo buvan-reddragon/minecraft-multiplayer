@@ -3,826 +3,739 @@
 
 <head>
 
-  <meta charset="UTF-8">
+    <meta charset="UTF-8">
 
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-  <title>Arcadia Maze Conquest</title>
+    <title>Arcadia Shipping Yard Conquest</title>
 
-  <style>
+    <style>
 
-    * {
-      box-sizing: border-box;
-      user-select: none;
-    }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
 
-    html,
-    body {
+        html,
+        body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #020617;
+            font-family:
+                "Segoe UI",
+                Arial,
+                sans-serif;
+        }
 
-      margin: 0;
-      padding: 0;
+        #game-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
 
-      width: 100%;
-      height: 100%;
+        /* ----------------------------------------
+           JOIN SCREEN
+        ---------------------------------------- */
 
-      overflow: hidden;
+        #name-portal {
 
-      background:
-        radial-gradient(
-          circle at center,
-          #111827,
-          #020617
-        );
+            position: fixed;
 
-      font-family:
-        "Segoe UI",
-        Tahoma,
-        Geneva,
-        Verdana,
-        sans-serif;
+            inset: 0;
 
-      color: white;
-    }
+            z-index: 999;
 
-    #game-canvas {
+            display: flex;
 
-      display: block;
+            flex-direction: column;
 
-      width: 100vw;
-      height: 100vh;
+            align-items: center;
 
-      cursor: crosshair;
-    }
+            justify-content: center;
 
-    /* ========================================================
-       NAME PORTAL
-       ======================================================== */
+            background:
+                radial-gradient(
+                    circle at center,
+                    #164e63,
+                    #020617 70%
+                );
 
-    #name-portal {
+            color: white;
 
-      position: fixed;
+        }
 
-      inset: 0;
+        #name-portal h1 {
 
-      z-index: 1000;
+            margin: 0;
 
-      display: flex;
+            font-size: clamp(
+                30px,
+                5vw,
+                64px
+            );
 
-      flex-direction: column;
+            color: #fbbf24;
 
-      justify-content: center;
+            text-shadow:
+                0 0 15px
+                rgba(251,191,36,.7);
 
-      align-items: center;
+            text-align: center;
 
-      background:
-        radial-gradient(
-          circle,
-          rgba(30, 41, 59, 0.96),
-          rgba(2, 6, 23, 0.99)
-        );
-    }
+        }
 
-    #name-portal h1 {
+        #name-portal p {
 
-      margin: 0;
+            color: #bae6fd;
 
-      color: #f59e0b;
+            margin: 10px 0 30px;
 
-      font-size: clamp(30px, 5vw, 58px);
+            text-align: center;
 
-      text-shadow:
-        0 0 15px rgba(245,158,11,.7),
-        0 0 40px rgba(245,158,11,.25);
-    }
+        }
 
-    #name-portal p {
+        #username-input {
 
-      color: #94a3b8;
+            width: 280px;
 
-      margin:
-        10px
-        0
-        30px;
+            padding: 14px;
 
-      text-align: center;
-    }
+            border-radius: 8px;
 
-    #username-input {
+            border:
+                2px solid #38bdf8;
 
-      width: 280px;
+            background:
+                rgba(2,6,23,.9);
 
-      padding: 14px 18px;
+            color: white;
 
-      border:
-        2px solid #7c3aed;
+            text-align: center;
 
-      border-radius: 8px;
+            font-size: 18px;
 
-      outline: none;
+            outline: none;
 
-      background: #0f172a;
+        }
 
-      color: white;
+        #join-btn {
 
-      font-size: 17px;
+            margin-top: 15px;
 
-      text-align: center;
+            padding: 14px 35px;
 
-      margin-bottom: 15px;
-    }
+            border: none;
 
-    #join-btn {
+            border-radius: 8px;
 
-      padding:
-        13px
-        34px;
+            background:
+                linear-gradient(
+                    135deg,
+                    #f59e0b,
+                    #f97316
+                );
 
-      border: none;
+            color: #111827;
 
-      border-radius: 8px;
+            font-weight: 900;
 
-      background: #f59e0b;
+            font-size: 16px;
 
-      color: #111827;
+            cursor: pointer;
 
-      font-size: 16px;
+            box-shadow:
+                0 0 25px
+                rgba(245,158,11,.4);
 
-      font-weight: bold;
+        }
 
-      cursor: pointer;
+        #join-btn:hover {
 
-      transition: .2s;
-    }
+            transform: scale(1.05);
 
-    #join-btn:hover {
+        }
 
-      transform: scale(1.05);
+        /* ----------------------------------------
+           TOP LEFT PLAYER HUD
+        ---------------------------------------- */
 
-      box-shadow:
-        0 0 25px
-        rgba(245,158,11,.6);
-    }
+        #player-hud {
 
-    /* ========================================================
-       TOP HUD
-       ======================================================== */
+            position: fixed;
 
-    #hud {
+            left: 20px;
+            top: 20px;
 
-      position: fixed;
+            z-index: 50;
 
-      top: 18px;
-      left: 18px;
+            width: 290px;
 
-      z-index: 100;
+            padding: 14px;
 
-      width: 280px;
+            border:
+                1px solid
+                rgba(56,189,248,.7);
 
-      display: flex;
+            border-radius: 10px;
 
-      flex-direction: column;
+            background:
+                rgba(2,6,23,.88);
 
-      gap: 8px;
+            backdrop-filter: blur(8px);
 
-      pointer-events: none;
-    }
+            color: white;
 
-    .hud-panel {
+            box-shadow:
+                0 10px 35px
+                rgba(0,0,0,.45);
 
-      background:
-        rgba(2,6,23,.88);
+        }
 
-      border:
-        1px solid
-        rgba(148,163,184,.25);
+        .player-header {
 
-      border-radius: 9px;
+            display: flex;
 
-      padding: 10px 12px;
+            justify-content:
+                space-between;
 
-      backdrop-filter: blur(8px);
+            align-items: center;
 
-      box-shadow:
-        0 8px 30px
-        rgba(0,0,0,.35);
-    }
+            margin-bottom: 10px;
 
-    #player-name {
+        }
 
-      color: #38bdf8;
+        #hud-name {
 
-      font-weight: bold;
+            font-size: 18px;
 
-      font-size: 14px;
-    }
+            font-weight: 900;
 
-    .stat-label {
+            color: #86efac;
 
-      display: flex;
+        }
 
-      justify-content: space-between;
+        #hud-level {
 
-      font-size: 11px;
+            color: #fbbf24;
 
-      color: #cbd5e1;
+            font-weight: 900;
 
-      margin-bottom: 4px;
-    }
+        }
 
-    .bar {
+        #hud-hearts {
 
-      height: 8px;
+            font-size: 21px;
 
-      background: #1e293b;
+            letter-spacing: 2px;
 
-      border-radius: 10px;
+            color: #ef4444;
 
-      overflow: hidden;
-    }
+        }
 
-    #health-bar {
+        .empty-heart {
 
-      height: 100%;
+            color: #475569;
 
-      width: 100%;
+        }
 
-      background: #22c55e;
+        .health-number {
 
-      transition: width .15s;
-    }
+            display: flex;
 
-    #armor-bar {
+            justify-content:
+                space-between;
 
-      height: 100%;
+            color: #cbd5e1;
 
-      width: 100%;
+            font-size: 12px;
 
-      background: #38bdf8;
+            margin-top: 5px;
 
-      transition: width .15s;
-    }
+        }
 
-    #ammo {
+        .health-bar {
 
-      color: #facc15;
+            height: 8px;
 
-      font-size: 20px;
+            background: #1e293b;
 
-      font-weight: bold;
-    }
+            border-radius: 20px;
 
-    #weapon {
+            overflow: hidden;
 
-      color: #94a3b8;
+        }
 
-      font-size: 11px;
-    }
+        #health-fill {
 
-    /* ========================================================
-       SCOREBOARD
-       ======================================================== */
+            height: 100%;
 
-    #scoreboard {
+            width: 100%;
 
-      position: fixed;
+            background:
+                linear-gradient(
+                    90deg,
+                    #22c55e,
+                    #84cc16
+                );
 
-      top: 18px;
+        }
 
-      right: 18px;
+        .stat-row {
 
-      z-index: 120;
+            display: flex;
 
-      min-width: 230px;
+            justify-content:
+                space-between;
 
-      background:
-        rgba(2,6,23,.9);
+            margin-top: 12px;
 
-      border:
-        1px solid
-        rgba(168,85,247,.5);
+            font-size: 13px;
 
-      border-radius: 10px;
+        }
 
-      padding: 12px;
+        .stat-box {
 
-      backdrop-filter: blur(8px);
+            padding: 8px 10px;
 
-      display: none;
-    }
+            background:
+                rgba(15,23,42,.9);
 
-    #scoreboard h3 {
+            border-radius: 6px;
 
-      margin:
-        0
-        0
-        8px;
+            flex: 1;
 
-      color: #c084fc;
+            margin-right: 6px;
 
-      font-size: 14px;
+        }
 
-      text-align: center;
-    }
+        .stat-box:last-child {
 
-    .score-row {
+            margin-right: 0;
 
-      display: grid;
+        }
 
-      grid-template-columns:
-        1fr
-        45px
-        45px;
+        .stat-title {
 
-      gap: 6px;
+            color: #64748b;
 
-      font-size: 11px;
+            font-size: 10px;
 
-      padding: 5px 0;
+        }
 
-      border-bottom:
-        1px solid
-        rgba(255,255,255,.06);
-    }
+        .stat-value {
 
-    /* ========================================================
-       KILL FEED
-       ======================================================== */
+            color: #f8fafc;
 
-    #kill-feed {
+            font-weight: bold;
 
-      position: fixed;
+        }
 
-      top: 150px;
+        #level-progress {
 
-      right: 18px;
+            color: #fbbf24;
 
-      z-index: 110;
+            font-size: 10px;
 
-      width: 280px;
+            margin-top: 8px;
 
-      display: flex;
+        }
 
-      flex-direction: column;
+        /* ----------------------------------------
+           TOP RIGHT OPPONENTS
+        ---------------------------------------- */
 
-      gap: 5px;
+        #opponents-panel {
 
-      pointer-events: none;
-    }
+            position: fixed;
 
-    .kill-message {
+            top: 20px;
 
-      background:
-        rgba(2,6,23,.82);
+            right: 20px;
 
-      border-left:
-        3px solid
-        #ef4444;
+            z-index: 50;
 
-      padding: 7px 10px;
+            background:
+                rgba(2,6,23,.9);
 
-      border-radius: 4px;
+            border:
+                1px solid
+                rgba(239,68,68,.65);
 
-      font-size: 11px;
+            padding: 12px 20px;
 
-      animation:
-        killIn .2s ease-out;
-    }
+            border-radius: 8px;
 
-    @keyframes killIn {
+            color: white;
 
-      from {
-        opacity: 0;
-        transform: translateX(30px);
-      }
+            text-align: center;
 
-      to {
-        opacity: 1;
-        transform: translateX(0);
-      }
-    }
+        }
 
-    /* ========================================================
-       CELL LOCK
-       ======================================================== */
+        #hud-players {
 
-    #cell-overlay {
+            color: #f87171;
 
-      position: fixed;
+            font-size: 18px;
 
-      inset: 0;
+            font-weight: 900;
 
-      z-index: 300;
+        }
 
-      display: none;
+        /* ----------------------------------------
+           CHAT
+        ---------------------------------------- */
 
-      justify-content: center;
+        #chat-container {
 
-      align-items: center;
+            position: fixed;
 
-      flex-direction: column;
+            left: 20px;
 
-      background:
-        rgba(76,29,149,.25);
+            bottom: 20px;
 
-      pointer-events: none;
-    }
+            width: 330px;
 
-    #cell-box {
+            z-index: 100;
 
-      background:
-        rgba(76,29,149,.94);
+            padding: 10px;
 
-      border:
-        2px solid
-        #c084fc;
+            background:
+                rgba(2,6,23,.9);
 
-      border-radius: 12px;
+            border:
+                1px solid
+                rgba(56,189,248,.45);
 
-      padding:
-        22px
-        35px;
+            border-radius: 8px;
 
-      text-align: center;
+        }
 
-      box-shadow:
-        0 0 50px
-        rgba(168,85,247,.8);
-    }
+        #chat-header {
 
-    #cell-box h2 {
+            color: #38bdf8;
 
-      margin: 0 0 10px;
+            font-size: 12px;
 
-      color: white;
-    }
+            font-weight: 900;
 
-    #cell-timer {
+            margin-bottom: 8px;
 
-      color: #fef08a;
+        }
 
-      font-size: 25px;
+        #chat-messages {
 
-      font-weight: bold;
-    }
+            height: 120px;
 
-    /* ========================================================
-       CHAT
-       ======================================================== */
+            overflow-y: auto;
 
-    #chat-container {
+            font-size: 12px;
 
-      position: fixed;
+            color: #cbd5e1;
 
-      left: 18px;
+            display: flex;
 
-      bottom: 18px;
+            flex-direction: column;
 
-      z-index: 200;
+            gap: 5px;
 
-      width: 320px;
+            margin-bottom: 8px;
 
-      background:
-        rgba(2,6,23,.9);
+        }
 
-      border:
-        1px solid
-        rgba(245,158,11,.45);
+        #chat-input {
 
-      border-radius: 9px;
+            width: 100%;
 
-      padding: 10px;
+            padding: 8px;
 
-      backdrop-filter: blur(7px);
-    }
+            background: #020617;
 
-    #chat-header {
+            border:
+                1px solid
+                #334155;
 
-      color: #f59e0b;
+            border-radius: 5px;
 
-      font-size: 12px;
+            color: white;
 
-      font-weight: bold;
+            outline: none;
 
-      margin-bottom: 7px;
-    }
+        }
 
-    #chat-messages {
+        /* ----------------------------------------
+           CONTROLS
+        ---------------------------------------- */
 
-      height: 100px;
+        #controls {
 
-      overflow-y: auto;
+            position: fixed;
 
-      font-size: 11px;
+            right: 225px;
 
-      color: #e2e8f0;
+            bottom: 25px;
 
-      display: flex;
+            z-index: 50;
 
-      flex-direction: column;
+            padding: 10px 15px;
 
-      gap: 4px;
+            background:
+                rgba(2,6,23,.8);
 
-      margin-bottom: 7px;
-    }
+            border-radius: 7px;
 
-    #chat-input {
+            color: #cbd5e1;
 
-      width: 100%;
+            font-size: 11px;
 
-      padding: 7px 9px;
+            line-height: 1.6;
 
-      border:
-        1px solid
-        #7c3aed;
+        }
 
-      border-radius: 5px;
+        #controls b {
 
-      background:
-        rgba(0,0,0,.6);
+            color: #fbbf24;
 
-      color: white;
+        }
 
-      outline: none;
+        /* ----------------------------------------
+           MOBILE
+        ---------------------------------------- */
 
-      font-size: 11px;
-    }
+        @media(max-width:700px) {
 
-    /* ========================================================
-       INSTRUCTIONS
-       ======================================================== */
+            #player-hud {
 
-    #instructions {
+                width: 220px;
 
-      position: fixed;
+                left: 10px;
+                top: 10px;
 
-      right: 18px;
+                padding: 10px;
 
-      bottom: 18px;
+            }
 
-      z-index: 100;
+            #opponents-panel {
 
-      color: #fbbf24;
+                top: 10px;
+                right: 10px;
 
-      background:
-        rgba(2,6,23,.88);
+            }
 
-      border:
-        1px solid
-        rgba(245,158,11,.3);
+            #chat-container {
 
-      border-radius: 8px;
+                left: 10px;
+                bottom: 10px;
 
-      padding: 10px 14px;
+                width: 260px;
 
-      font-size: 11px;
+            }
 
-      line-height: 1.7;
+            #controls {
 
-      pointer-events: none;
-    }
+                display: none;
 
-    /* ========================================================
-       MOBILE
-       ======================================================== */
+            }
 
-    @media (max-width: 700px) {
+        }
 
-      #hud {
-
-        width: 210px;
-
-        top: 8px;
-        left: 8px;
-      }
-
-      #scoreboard {
-
-        right: 8px;
-        top: 8px;
-
-        min-width: 180px;
-      }
-
-      #chat-container {
-
-        left: 8px;
-        bottom: 8px;
-
-        width: 260px;
-      }
-
-      #instructions {
-
-        display: none;
-      }
-
-      #kill-feed {
-
-        right: 8px;
-        top: 120px;
-
-        width: 200px;
-      }
-    }
-
-  </style>
+    </style>
 
 </head>
 
 <body>
 
-  <!-- ========================================================
-       JOIN SCREEN
-       ======================================================== -->
+    <!-- ==========================================
+         JOIN SCREEN
+    =========================================== -->
 
-  <div id="name-portal">
+    <div id="name-portal">
 
-    <h1>ARCADIA MAZE</h1>
+        <h1>
+            ⚓ ARCADIA
+        </h1>
 
-    <p>
-      Multiplayer Tactical Conquest
-    </p>
+        <h1 style="font-size:clamp(22px,3vw,40px);">
+            SHIPPING YARD CONQUEST
+        </h1>
 
-    <input
-      id="username-input"
-      type="text"
-      maxlength="14"
-      placeholder="Enter Soldier Name"
-      autocomplete="off"
-    >
+        <p>
+            Multiplayer Tactical Dock Warfare
+        </p>
 
-    <button id="join-btn">
-      ENTER BATTLE
-    </button>
+        <input
+            id="username-input"
+            maxlength="14"
+            placeholder="Enter Soldier Name"
+            autocomplete="off"
+        >
 
-  </div>
-
-  <!-- ========================================================
-       PLAYER HUD
-       ======================================================== -->
-
-  <div id="hud">
-
-    <div class="hud-panel">
-
-      <div id="player-name">
-        SOLDIER
-      </div>
-
-      <div class="stat-label">
-        <span>HEALTH</span>
-        <span id="health-value">100</span>
-      </div>
-
-      <div class="bar">
-        <div id="health-bar"></div>
-      </div>
-
-      <div
-        class="stat-label"
-        style="margin-top:7px;"
-      >
-        <span>ARMOR</span>
-        <span id="armor-value">25</span>
-      </div>
-
-      <div class="bar">
-        <div id="armor-bar"></div>
-      </div>
+        <button id="join-btn">
+            ENTER SHIPPING YARD
+        </button>
 
     </div>
 
-    <div class="hud-panel">
 
-      <div id="weapon">
-        ASSAULT RIFLE
-      </div>
+    <!-- ==========================================
+         PLAYER HUD
+    =========================================== -->
 
-      <div id="ammo">
-        30 / 30
-      </div>
+    <div id="player-hud">
 
-    </div>
+        <div class="player-header">
 
-  </div>
+            <span id="hud-name">
+                SOLDIER
+            </span>
 
-  <!-- ========================================================
-       SCOREBOARD
-       ======================================================== -->
+            <span id="hud-level">
+                LVL 0
+            </span>
 
-  <div id="scoreboard">
+        </div>
 
-    <h3>
-      ⚔ BATTLE SCOREBOARD
-    </h3>
+        <div id="hud-hearts">
+            ♥♥♥♥♥
+        </div>
 
-    <div id="scoreboard-content"></div>
+        <div class="health-number">
 
-  </div>
+            <span>
+                HEALTH
+            </span>
 
-  <!-- ========================================================
-       KILL FEED
-       ======================================================== -->
+            <span id="hud-health">
+                100/100
+            </span>
 
-  <div id="kill-feed"></div>
+        </div>
 
-  <!-- ========================================================
-       CELL LOCK
-       ======================================================== -->
+        <div class="health-bar">
 
-  <div id="cell-overlay">
+            <div id="health-fill"></div>
 
-    <div id="cell-box">
+        </div>
 
-      <h2>
-        🟣 VIOLET CELL LOCKED
-      </h2>
+        <div class="stat-row">
 
-      <div>
-        Soldier captured!
-      </div>
+            <div class="stat-box">
 
-      <div id="cell-timer">
-        30
-      </div>
+                <div class="stat-title">
+                    ELIMINATIONS
+                </div>
 
-      <div>
-        seconds remaining
-      </div>
+                <div
+                    class="stat-value"
+                    id="hud-kills"
+                >
+                    KILLS 0
+                </div>
 
-    </div>
+            </div>
 
-  </div>
+            <div class="stat-box">
 
-  <!-- ========================================================
-       CHAT
-       ======================================================== -->
+                <div class="stat-title">
+                    STATUS
+                </div>
 
-  <div id="chat-container">
+                <div
+                    class="stat-value"
+                    style="color:#22c55e;"
+                >
+                    ACTIVE
+                </div>
 
-    <div id="chat-header">
-      📡 COMMUNICATION RADAR
-    </div>
+            </div>
 
-    <div id="chat-messages">
+        </div>
 
-      <div
-        style="
-          color:#64748b;
-          font-style:italic;
-        "
-      >
-        Press ENTER to chat...
-      </div>
+        <div id="level-progress">
+            0 ELIMINATIONS
+        </div>
 
     </div>
 
-    <input
-      id="chat-input"
-      type="text"
-      maxlength="150"
-      placeholder="Press Enter to chat..."
-      autocomplete="off"
-    >
 
-  </div>
+    <!-- ==========================================
+         OPPONENT PANEL
+    =========================================== -->
 
-  <!-- ========================================================
-       CONTROLS
-       ======================================================== -->
+    <div id="opponents-panel">
 
-  <div id="instructions">
+        <div style="font-size:10px;color:#94a3b8;">
+            ⚔ BATTLEFIELD
+        </div>
 
-    🪖 <b>CONTROLS</b><br>
+        <div id="hud-players">
+            OPPONENTS 0
+        </div>
 
-    W A S D — Move<br>
+    </div>
 
-    SHIFT — Sprint<br>
 
-    Mouse — Aim<br>
+    <!-- ==========================================
+         CHAT
+    =========================================== -->
 
-    Left Click — Fire<br>
+    <div id="chat-container">
 
-    R — Reload<br>
+        <div id="chat-header">
+            📡 COMMUNICATION RADAR
+        </div>
 
-    TAB — Scoreboard<br>
+        <div id="chat-messages">
 
-    ENTER — Chat
+            <div style="color:#64748b;">
+                Welcome to the shipping yard...
+            </div>
 
-  </div>
+        </div>
 
-  <!-- ========================================================
-       GAME CANVAS
-       ======================================================== -->
+        <input
+            id="chat-input"
+            placeholder="Press Enter to chat..."
+            maxlength="120"
+            autocomplete="off"
+        >
 
-  <canvas id="game-canvas"></canvas>
+    </div>
 
-  <script src="/socket.io/socket.io.js"></script>
 
-  <script src="client.js"></script>
+    <!-- ==========================================
+         CONTROLS
+    =========================================== -->
+
+    <div id="controls">
+
+        🪖 <b>W A S D</b> — Move<br>
+
+        🎯 <b>Mouse</b> — Aim<br>
+
+        🔫 <b>Left Click</b> — Fire<br>
+
+        💬 <b>Enter</b> — Chat<br>
+
+        ❤️ Walk over hearts — Restore HP<br>
+
+        💀 Eliminations — Increase Level
+
+    </div>
+
+
+    <canvas id="game-canvas"></canvas>
+
+
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script src="client.js"></script>
 
 </body>
 
